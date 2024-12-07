@@ -1,7 +1,10 @@
 # t.me/beauty_salon_hse_bot.
-TOKEN = "7106520053:AAHtdf-9E2DKTIDxiauTj56WxyqlfC26Yms"
-import logging
 
+import logging
+import os
+
+from db.connection import session
+from db.database_functions import *
 from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove, Update
 from telegram.ext import (
     Application,
@@ -11,6 +14,8 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
+
+TOKEN = os.getenv("TOKEN")
 
 # Enable logging
 logging.basicConfig(
@@ -39,16 +44,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Starts the conversation.
        If user is new so add him to data_base,
        else show a menu"""
-    # TODO: проверить есть ли пользователь с этим тг_id
-    #  тг_id == update.message.from_user.id
-    need_sign_up = True
 
-    if need_sign_up:
-        # TODO: add user to bd
+    telegram_id = update.message.from_user.id
+    client_id = get_client_id(session, telegram_id)
+
+    if client_id is None:
+        name = update.message.from_user.first_name
+        client_id = add_user(session, telegram_id, name)
         pass
 
-    # TODO: save here bd_id of user
-    context.user_data["db_id"] = -1
+    context.user_data["client_id"] = client_id
 
     reply_keyboard = [["Записаться", "Получить список записей", "Отменить запись"]]
     await update.message.reply_text(
