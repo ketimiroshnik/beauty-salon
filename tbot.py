@@ -28,15 +28,13 @@ logger = logging.getLogger(__name__)
 
 MENU, SERVICE_CHOOSE, MASTER_CHOOSE, DAY_CHOOSE, TIME_CHOOSE, CHOOSE_CANCEL_APPOINTMENT, APPLY_CANCEL_APPOINTMENT = range(7)
 
-DAYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10",
-                    "11", "12", "13", "14", "15", "16", "17", "18", "19", "20",
-                    "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31"]
+DAYS = [datetime.strptime('2024-01-01', '%Y-%m-%d') + timedelta(days=x) for x in range(30)]
 
 SERVICES = ["Постричься", "Покраска волос", "Маникюр"]
 
 MASTERS = ["Амиран", "Екатерина", "Арина", "Роман", "Анна"]
 
-TIMES = ["11:00", "12:00", "13:00", "14:00", "15:00"]
+TIMES = [datetime.strptime('2024-01-01 12:00', '%Y-%m-%d %H:%M') + timedelta(hours=x) for x in range(4)]
 
 DL_ST = 3 # в некторых функциях отвечает за длину строки в таблице выводимых вариантов ответов
 
@@ -46,7 +44,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
        else show a menu"""
 
     telegram_id = update.message.from_user.id
-    client_id = get_client_id(session, telegram_id)
+    client_id = get_client_id_by_telegram_id(session, telegram_id)
 
     if client_id is None:
         name = update.message.from_user.first_name
@@ -67,11 +65,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 async def service_choose(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if (update.message.text in context.user_data["services"]):
-        context.user_data["service"] = update.message.text
-        # TODO функция получения списка мастеров MASTERS или пустой список, если доступных мастеров нет
-        mst = MASTERS
-        context.user_data["masters"] = mst
-        if (len(mst) != 0):
+
+         # TODO получить id для услуги
+
+        context.user_data["service"] = SERVICES.index(update.message.text)
+        masters = get_masters_for_service(session, context.user_data["service"])
+
+        # TODO по списку id поулчить список мастеров MASTERS
+
+        context.user_data["masters"] = MASTERS
+        if (len(context.user_data["masters"]) != 0):
             reply_keyboard = [context.user_data["masters"][i:i+DL_ST] for i in range(0, len(context.user_data["masters"]), DL_ST)]
             reply_keyboard.append(["Назад"])
             await update.message.reply_text(
@@ -116,10 +119,17 @@ async def service_choose(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def master_choose(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if (update.message.text in context.user_data["masters"]):
-        context.user_data["master"] = update.message.text
-        # TODO функция получения списка свободных дней DAYS
-        days = DAYS
-        context.user_data["days"] = days
+
+        # TODO получить id для мастера
+
+        context.user_data["master"] = MASTERS.index(update.message.text)
+        days = get_free_days_for_master(session, context.user_data["master"]) #days=DAYS
+
+        day=[]
+        for k in DAYS:
+            day.append(k.strftime('%Y-%m-%d'))
+
+        context.user_data["days"] = day
         reply_keyboard = [context.user_data["days"][i:i+10] for i in range(0, len(context.user_data["days"]), 10)]
         reply_keyboard.append(["Назад"])
         await update.message.reply_text(
@@ -154,9 +164,14 @@ async def master_choose(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
 async def day_choose(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if (update.message.text in context.user_data["days"]):
-        context.user_data["day"] = update.message.text
-        # TODO функция получения списка свободных часов
-        time = TIMES
+        context.user_data["day"] = datetime.strptime(update.message.text, '%Y-%m-%d')
+
+        times = get_free_days_for_master(session, context.user_data["master"]) #times=TIMES
+
+        time=[]
+        for k in TIMES:
+            time.append(k.strftime('%H:%M'))
+        
         context.user_data["times"] = time
         reply_keyboard = [context.user_data["times"][i:i+DL_ST] for i in range(0, len(context.user_data["times"]), DL_ST)]
         reply_keyboard.append(["Назад"])
@@ -190,9 +205,12 @@ async def day_choose(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 async def time_choose(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if (update.message.text in context.user_data["times"]):
-        context.user_data["time"] = update.message.text
-        # TODO передать в бд service, master, day, time, id
-        await update.message.reply_text(f"Вы записаны на услугу: {context.user_data["service"]} к мастеру: {context.user_data["master"]} на {context.user_data["day"]} число к {context.user_data["time"]}")
+        context.user_data["time"] = datetime.strptime(update.message.text, '%H:%M')
+        create_appointment(session, context.user_data["client_id"], context.user_data["service"], context.user_data["master"], context.user_data["day"].replace(hour = context.user_data["time"].hour, minute = context.user_data["time"].minute))
+
+        # TODO везде, где поиск по индексам, использовать функцию перехода по id к названию
+
+        await update.message.reply_text(f"Вы записаны на услугу: {SERVICES[context.user_data["service"]]} к мастеру: {MASTERS[context.user_data["master"]]} на {context.user_data["day"].strftime('%Y-%m-%d')} число к {context.user_data["time"].strftime('%H:%M')}")
         reply_keyboard = [["Записаться", "Получить список записей", "Отменить запись"]]
         await update.message.reply_text(
             "Выбери, что ты хочешь сделать?",
