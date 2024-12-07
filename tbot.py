@@ -1,5 +1,5 @@
-# t.me/beauti_salon_hse_bot.
-TOKEN = "7822764300:AAGfTqdvGn5BfvUEi9Y2O4viOsbbZtjmjk8"
+# t.me/beauty_salon_hse_bot.
+TOKEN = "7106520053:AAHtdf-9E2DKTIDxiauTj56WxyqlfC26Yms"
 import logging
 
 from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove, Update
@@ -21,8 +21,24 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
-SIGN_UP_NAME,  SIGN_UP_PHONE, SIGN_UP_END, MENU = range(4)
+SIGN_UP_NAME,  SIGN_UP_PHONE, SIGN_UP_END, MENU, MOUTH_CHOOSE, DAY_CHOOSE, TIME_CHOOSE = range(7)
 
+CALENDAR_31 = [["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
+                    ["11", "12", "13", "14", "15", "16", "17", "18", "19", "20"],
+                    ["21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31"],
+                    ["Назад"]]
+CALENDAR_30 = [["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
+                    ["11", "12", "13", "14", "15", "16", "17", "18", "19", "20"],
+                    ["21", "22", "23", "24", "25", "26", "27", "28", "29", "30"], 
+                    ["Назад"]]
+CALENDAR_28 = [["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
+                    ["11", "12", "13", "14", "15", "16", "17", "18", "19", "20"],
+                    ["21", "22", "23", "24", "25", "26", "27", "28"],
+                    ["Назад"]]
+MOUTHS = [["Январь", "Февраль", "Март", "Апрель"],
+                ["Май", "Июнь", "Июль", "Август"],
+                ["Сентябрь", "Октябрь", "Ноябрь", "Декабрь"],
+                ["Назад"]]
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Starts the conversation.
@@ -81,6 +97,123 @@ async def sign_up_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return MENU
 
+async def mouth_choose(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if (update.message.text != "Назад"):
+
+        # TODO проверить, есть ли свободные слоты в выбранном месяце
+        mouth_free = True
+        context.user_data["mouth"] = update.message.text
+        if (mouth_free):
+            if (context.user_data["mouth"] in ["Январь", "Март", "Май", "Июль", "Сентябрь", "Ноябрь"]):
+                reply_keyboard = CALENDAR_31
+            elif(context.user_data["mouth"] == "Февраль"):
+                reply_keyboard = CALENDAR_28
+            else:
+                reply_keyboard = CALENDAR_30
+            
+            await update.message.reply_text(
+                "Выберите дату записи",
+                reply_markup=ReplyKeyboardMarkup(
+                    reply_keyboard, one_time_keyboard=True,
+                ),
+            )
+            return DAY_CHOOSE
+        else:
+            reply_keyboard = MOUTHS
+
+            await update.message.reply_text(
+                "В этом месяце нет доступных записей, выбери другой",
+                reply_markup=ReplyKeyboardMarkup(
+                    reply_keyboard, one_time_keyboard=True,
+                ),
+            )
+            return MOUTH_CHOOSE
+    else:
+        reply_keyboard = [["Записаться", "Получить список записей", "Отменить запись"]]
+        await update.message.reply_text(
+            "Выбери, что ты хочешь сделать?",
+            reply_markup=ReplyKeyboardMarkup(
+                reply_keyboard, one_time_keyboard=True,
+            ),
+        )
+        return MENU
+
+    
+
+async def day_choose(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if (update.message.text != "Назад"):
+        # TODO проверить, есть ли свободные слоты в выбранном дне
+        day_free = True
+        context.user_data["day"] = update.message.text
+        if (day_free):
+            reply_keyboard = [["10:00-11:00", "11:00-12:00", "12:00-13:00"],
+                              ["Назад"]]
+
+            # TODO настроить, чтобы отображалсь только возможные интервалы, которые свободны
+            
+            await update.message.reply_text(
+                "Выберите время записи",
+                reply_markup=ReplyKeyboardMarkup(
+                    reply_keyboard, one_time_keyboard=True,
+                ),
+            )
+            return TIME_CHOOSE
+        else:
+            if (context.user_data["mouth"] in ["Январь", "Март", "Май", "Июль", "Сентябрь", "Ноябрь"]):
+                reply_keyboard = CALENDAR_31
+            elif(context.user_data["mouth"] == "Февраль"):
+                reply_keyboard = CALENDAR_28
+            else:
+                reply_keyboard = CALENDAR_30
+                
+            await update.message.reply_text(
+                "В этот день нету свободной записи, выбери другой",
+                reply_markup=ReplyKeyboardMarkup(
+                    reply_keyboard, one_time_keyboard=True,
+                ),
+            )
+            return DAY_CHOOSE
+    else:
+        reply_keyboard = MOUTHS
+    
+        await update.message.reply_text(
+            "Выберите месяц записи текущего года",
+            reply_markup=ReplyKeyboardMarkup(
+                reply_keyboard, one_time_keyboard=True,
+            ),
+        )
+        return MOUTH_CHOOSE
+
+async def time_choose(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if (update.message.text != "Назад"):
+
+        # TODO перенести в бд данные о записи
+        await update.message.reply_text(f"Вы записались на {context.user_data["day"]} {context.user_data["mouth"]} {update.message.text}") 
+        reply_keyboard = [["Записаться", "Получить список записей", "Отменить запись"]]
+        await update.message.reply_text(
+            "Выбери, что ты хочешь сделать?",
+            reply_markup=ReplyKeyboardMarkup(
+                reply_keyboard, one_time_keyboard=True,
+            ),
+        )
+        return MENU
+    else:
+        if (context.user_data["mouth"] in ["Январь", "Март", "Май", "Июль", "Сентябрь", "Ноябрь"]):
+            reply_keyboard = CALENDAR_31
+        elif(context.user_data["mouth"] == "Февраль"):
+            reply_keyboard = CALENDAR_28
+        else:
+            reply_keyboard = CALENDAR_30
+            
+        await update.message.reply_text(
+            "В этот день нету свободной записи, выбери другой",
+            reply_markup=ReplyKeyboardMarkup(
+                reply_keyboard, one_time_keyboard=True,
+            ),
+        )
+        return DAY_CHOOSE
+
+
 
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Get the information from user`s answer what he want to do and show him what he wanted"""
@@ -89,16 +222,20 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     logger.info(f"Username: {user.username}, his choice in menu is {update.message.text}")
 
     # TODO: продролжить здесь...
-    if (update.message.text == "Записаться") :
-        pass
+    if (update.message.text  == "Записаться") :
+            reply_keyboard = MOUTHS
+    
+            await update.message.reply_text(
+                "Выберите месяц записи текущего года",
+                reply_markup=ReplyKeyboardMarkup(
+                    reply_keyboard, one_time_keyboard=True,
+                ),
+            )
+            return MOUTH_CHOOSE
     elif (update.message.text == "Получить список записей") :
         pass
     elif (update.message.text == "Отменить запись") :
         pass
-
-    # TODO: эту надпись, конечно, убрать
-    await update.message.reply_text("Ты в меню.",
-                                    reply_markup=ReplyKeyboardRemove(),)
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -124,6 +261,9 @@ def main() -> None:
             SIGN_UP_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, sign_up_name)],
             SIGN_UP_PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, sign_up_phone)],
             MENU: [MessageHandler(filters.Regex("^(Записаться|Получить список записей|Отменить запись)$"), menu)],
+            MOUTH_CHOOSE: [MessageHandler(filters.TEXT & ~filters.COMMAND, mouth_choose)],
+            DAY_CHOOSE: [MessageHandler(filters.TEXT & ~filters.COMMAND, day_choose)],
+            TIME_CHOOSE: [MessageHandler(filters.TEXT & ~filters.COMMAND, time_choose)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
     )
