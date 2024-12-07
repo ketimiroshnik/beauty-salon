@@ -236,7 +236,7 @@ async def apply_cancel_appointment(update: Update, context: ContextTypes.DEFAULT
         return MENU
     elif answer.lower() == "да":
         appointment_id = context.user_data["id_appointment_for_cancel"]
-        # TODO удалить запись с id == appointment_id
+        cancel_appointment(session, appointment_id)
         reply_keyboard = [["Записаться", "Получить список записей", "Отменить запись"]]
         await update.message.reply_text(
             "Запись успешно отменена.\nВыбери, что ты хочешь сделать?",
@@ -272,7 +272,6 @@ async def choose_cancel_appointment(update: Update, context: ContextTypes.DEFAUL
 
     appointments_dict = context.user_data["list_for_cancel"]
     if not answer.isdigit() or int(answer) not in appointments_dict:
-        print(12345678)
         reply_keyboard = [["Назад"], [str(i) for i in appointments_dict]]
         await update.message.reply_text(
             "Записи с таким номером нет в списке. Выбери пожалуйста существующий номер.",
@@ -283,19 +282,19 @@ async def choose_cancel_appointment(update: Update, context: ContextTypes.DEFAUL
         return CHOOSE_CANCEL_APPOINTMENT
 
     appointment_id = appointments_dict[int(answer)]
-    # TODO по appointment_id получаем из бд информацию о данной записи
     context.user_data["id_appointment_for_cancel"] = appointment_id
-    this_appointment = {"date": "13.12.24", "time": "19:00",
-                             "name of master": "Даниил", "procedure": "Стрижка", "appointment_id": 10}
+    this_appointment = get_appointment_by_id(session, appointment_id)
 
     text = []
     text.append("Вот выбранная запись:")
+
     now = []
-    for key, value in this_appointment.items():
-        if key == "appointment_id":
-            continue
-        now.append(f"{key}: {value}")
-    text.append(" ".join(now))
+    now.append(f"Услуга: {this_appointment["service"]["title"]}")
+    now.append(f"Дата: {this_appointment["appointment_time"].strftime("%Y-%m-%d")}")
+    now.append(f"Время: {this_appointment["appointment_time"].strftime("%H:%M")}")
+    now.append(f"Мастер: {this_appointment["master"]["name"]}")
+
+    text.append(", ".join(now))
     text.append("Вы уверены, что хотите отменить эту запись?")
     text = '\n'.join(text)
 
@@ -329,9 +328,8 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         )
         return SERVICE_CHOOSE
     elif (update.message.text == "Получить список записей") :
-        # TODO выгрузить из бд список записей
-        user_have_appointment = True
-        if (not user_have_appointment):
+        appointments = get_client_appointments(session, context.user_data["client_id"])
+        if (not appointments):
             reply_keyboard = [["Записаться", "Получить список записей", "Отменить запись"]]
             await update.message.reply_text(
                 "У тебя нет записей. Но ты всегда можешь записаться)) Выбери, что ты хочешь сделать?",
@@ -341,20 +339,14 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             )
             return MENU
         else:
-            # TODO получаем из бд данные о записях пользователя и кладем его в список
-            # (тут должен быть нормальный список)
-            appointments = [{"date": "12.12.24", "time": "13:00",
-                             "name of master": "Надя", "procedure": "Маникюр", "appointment_id": 1},
-                            {"date": "13.12.24", "time": "11:00", "name of master": "Лена",
-                             "procedure": "Стрижка", "appointment_id": 1}, ]
             text = ["Вот список твоих записей"]
             for i in range(len(appointments)):
-                now = [f"{i + 1}."]
-                for key, value in appointments[i].items():
-                    if key == "appointment_id":
-                        continue
-                    now.append(f"{key}: {value}")
-                text.append(",\t".join(now))
+                now = []
+                now.append(f"Услуга: {appointments[i]["service"]["title"]}")
+                now.append(f"Дата: {appointments[i]["appointment_time"].strftime("%Y-%m-%d")}")
+                now.append(f"Время: {appointments[i]["appointment_time"].strftime("%H:%M")}")
+                now.append(f"Мастер: {appointments[i]["master"]["name"]}")
+                text.append(f"{i + 1}." + ", ".join(now))
             text.append("\nВыбери, что ты хочешь сделать?")
             text = '\n'.join(text)
             reply_keyboard = [["Записаться", "Получить список записей", "Отменить запись"]]
@@ -366,9 +358,8 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             )
             return MENU
     elif (update.message.text == "Отменить запись") :
-        # TODO выгрузить из бд список записей
-        user_have_appointment = True
-        if (not user_have_appointment):
+        appointments = get_client_appointments(session, context.user_data["client_id"])
+        if (not appointments):
             reply_keyboard = [["Записаться", "Получить список записей", "Отменить запись"]]
             await update.message.reply_text(
                 "У тебя нет записей. Но ты всегда можешь записаться)) Выбери, что ты хочешь сделать?",
@@ -378,12 +369,6 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             )
             return MENU
         else:
-            # TODO получаем из бд данные о записях пользователя и кладем его в список
-            # (тут должен быть нормальный список)
-            appointments = [{"date": "12.12.24", "time": "13:00",
-                             "name of master": "Надя", "procedure": "Маникюр", "appointment_id": 1},
-                            {"date": "13.12.24", "time": "11:00", "name of master": "Лена",
-                             "procedure": "Стрижка", "appointment_id": 1}, ]
             text = ["Вот список твоих записей"]
 
             # сохраняем присвоенные номера, чтобы мы могли потом все удалить
@@ -392,14 +377,15 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             numbers_for_user_answer = []
 
             for i in range(len(appointments)):
-                now = [f"{i + 1}."]
-                numbers_for_user_answer.append(str(i+1))
-                for key, value in appointments[i].items():
-                    if key == "appointment_id":
-                        context.user_data["list_for_cancel"][i+1] = value
-                        continue
-                    now.append(f"{key}: {value}")
-                text.append(",\t".join(now))
+                numbers_for_user_answer.append(str(i + 1))
+                context.user_data["list_for_cancel"][i + 1] = appointments[i]["appointment_id"]
+                now = []
+                now.append(f"Услуга: {appointments[i]["service"]["title"]}")
+                now.append(f"Дата: {appointments[i]["appointment_time"].strftime("%Y-%m-%d")}")
+                now.append(f"Время: {appointments[i]["appointment_time"].strftime("%H:%M")}")
+                now.append(f"Мастер: {appointments[i]["master"]["name"]}")
+                text.append(f"{i + 1}." + ", ".join(now))
+
             text.append("\nВыбери номер записи, от которой ты хочешь отписаться")
             text = '\n'.join(text)
 
