@@ -85,12 +85,13 @@ def create_appointment(session: Session, client_id: int, service_id: int, master
     return new_appointment.id
 
 def get_client_appointments(session: Session, client_id: int):
+    """Выдает все записи для клиента кроме отмененных как список словарей"""
     appointments = session.execute(
         select(Appointment, Client, Master, Service)
         .outerjoin(Client, Appointment.client_id == Client.client_id)
         .outerjoin(Master, Appointment.master_id == Master.id)
         .outerjoin(Service, Appointment.service_id == Service.id)
-        .where(Appointment.client_id == client_id)
+        .where(Appointment.client_id == client_id, Appointment.status)
         .order_by(Appointment.appointment_time)
     ).all()
     if not appointments:
