@@ -8,3 +8,6 @@
 - Базовые тесты
 
 В будущем будет добавлена поддержка функционала для мастеров и сбор статистики, и много других важных вещей.
+
+КТ-1 отчет: https://docs.google.com/document/d/1z9TlTZso_1fwmwhNBQk3ArFjDdF8EJL8hAiHbiQ0xw8/edit?usp=sharing
+КТ-2 отчет: https://docs.google.com/document/d/1cvwe5vkjgMK5MPPMVjS0QAnZYolQdjkvNz-h7jxrJ6g/edit?usp=sharing
