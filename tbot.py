@@ -21,7 +21,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
-SIGN_UP_NAME,  SIGN_UP_PHONE, SIGN_UP_END, MENU, MOUTH_CHOOSE, DAY_CHOOSE, TIME_CHOOSE = range(7)
+MENU, MOUTH_CHOOSE, DAY_CHOOSE, TIME_CHOOSE, CHOOSE_CANCEL_APPOINTMENT, APPLY_CANCEL_APPOINTMENT = range(6)
 
 CALENDAR_31 = [["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
                     ["11", "12", "13", "14", "15", "16", "17", "18", "19", "20"],
@@ -42,55 +42,23 @@ MOUTHS = [["Январь", "Февраль", "Март", "Апрель"],
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Starts the conversation.
-       If user is new so start to sign up and ask a name,
+       If user is new so add him to data_base,
        else show a menu"""
-
-    # TODO: проверить есть ли пользователь с этим id в бд и если нет то регистрация, иначе - меню
+    # TODO: проверить есть ли пользователь с этим тг_id
+    #  тг_id == update.message.from_user.id
     need_sign_up = True
+
     if need_sign_up:
-        await update.message.reply_text(
-            "Привет! Я помогу тебе записаться в  салон!\nДля начала давай зарегистрируем тебя. Как тебя зовут?",
-            reply_markup=ReplyKeyboardRemove(),
-        )
-        return SIGN_UP_NAME
-    else:
-        reply_keyboard = [["Записаться", "Получить список записей", "Отменить запись"]]
-        await update.message.reply_text(
-            "Привет! Я могу записать в салон и могу рассказать тебе о твоих записях!\n"
-            "Выбери, что ты хочешь сделать?",
-            reply_markup=ReplyKeyboardMarkup(
-                reply_keyboard, one_time_keyboard=True,
-            ),
-        )
-        return MENU
+        # TODO: add user to bd
+        pass
 
-
-async def sign_up_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Sign up. Get the name from user`s answer and ask the phone"""
-    context.user_data["name_for_sign_up"] = update.message.text  # save name in dict
-
-    user = update.message.from_user
-    logger.info(f"Username: {user.username}, his name is {update.message.text}")
-    await update.message.reply_text(
-        "Напиши пожалуйста свой номер телефона для связи",
-        reply_markup=ReplyKeyboardRemove(),
-    )
-    return SIGN_UP_PHONE
-
-async def sign_up_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Get the phone from user`s answer and show menu. Also add user to database"""
-
-    context.user_data["phone_for_sign_up"] = update.message.text  # safe phone
-
-    # TODO: sign up user in database, where name == context.user_data["name_for_sign_up"]
-    #  and phone == context.user_data["phone_for_sign_up"]
-
-    user = update.message.from_user
-    logger.info(f"Username: {user.username}, his telephon number is {update.message.text}")
+    # TODO: save here bd_id of user
+    context.user_data["db_id"] = -1
 
     reply_keyboard = [["Записаться", "Получить список записей", "Отменить запись"]]
     await update.message.reply_text(
-        "Спасибо, за контактные данные! Теперь мы можем перейти к записи. \nВыбери, что ты хочешь сделать?",
+        "Привет! Я могу записать в салон и могу рассказать тебе о твоих записях!\n"
+        "Выбери, что ты хочешь сделать?",
         reply_markup=ReplyKeyboardMarkup(
             reply_keyboard, one_time_keyboard=True,
         ),
@@ -206,12 +174,102 @@ async def time_choose(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
             reply_keyboard = CALENDAR_30
             
         await update.message.reply_text(
-            "В этот день нету свободной записи, выбери другой",
+            "Выберите время записи",
             reply_markup=ReplyKeyboardMarkup(
                 reply_keyboard, one_time_keyboard=True,
             ),
         )
         return DAY_CHOOSE
+
+
+async def apply_cancel_appointment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    answer = update.message.text
+    if answer.lower() == "нет":
+        reply_keyboard = [["Записаться", "Получить список записей", "Отменить запись"]]
+        await update.message.reply_text(
+            "Хорошо, процесс отмены записи остановлен.\nВыбери, что ты хочешь сделать?",
+            reply_markup=ReplyKeyboardMarkup(
+                reply_keyboard, one_time_keyboard=True,
+            ),
+        )
+        return MENU
+    elif answer.lower() == "да":
+        appointment_id = context.user_data["id_appointment_for_cancel"]
+        # TODO удалить запись с id == appointment_id
+        reply_keyboard = [["Записаться", "Получить список записей", "Отменить запись"]]
+        await update.message.reply_text(
+            "Запись успешно отменена.\nВыбери, что ты хочешь сделать?",
+            reply_markup=ReplyKeyboardMarkup(
+                reply_keyboard, one_time_keyboard=True,
+            ),
+        )
+        return MENU
+    else:
+        reply_keyboard = [["Да", "Нет"]]
+        await update.message.reply_text(
+            "К сожалению я не понял твоего ответа. Напиши пожалуйста Да или Нет",
+            reply_markup=ReplyKeyboardMarkup(
+                reply_keyboard, one_time_keyboard=True,
+            ),
+        )
+    return APPLY_CANCEL_APPOINTMENT
+
+
+
+
+async def choose_cancel_appointment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    answer = update.message.text
+    if answer == "Назад":
+        reply_keyboard = [["Записаться", "Получить список записей", "Отменить запись"]]
+        await update.message.reply_text(
+            "Выбери, что ты хочешь сделать?",
+            reply_markup=ReplyKeyboardMarkup(
+                reply_keyboard, one_time_keyboard=True,
+            ),
+        )
+        return MENU
+
+    appointments_dict = context.user_data["list_for_cancel"]
+    if not answer.isdigit() or int(answer) not in appointments_dict:
+        print(12345678)
+        reply_keyboard = [["Назад"], [str(i) for i in appointments_dict]]
+        await update.message.reply_text(
+            "Записи с таким номером нет в списке. Выбери пожалуйста существующий номер.",
+            reply_markup=ReplyKeyboardMarkup(
+                reply_keyboard, one_time_keyboard=True,
+            ),
+        )
+        return CHOOSE_CANCEL_APPOINTMENT
+
+    appointment_id = appointments_dict[int(answer)]
+    # TODO по appointment_id получаем из бд информацию о данной записи
+    context.user_data["id_appointment_for_cancel"] = appointment_id
+    this_appointment = {"date": "13.12.24", "time": "19:00",
+                             "name of master": "Даниил", "procedure": "Стрижка", "appointment_id": 10}
+
+    text = []
+    text.append("Вот выбранная запись:")
+    now = []
+    for key, value in this_appointment.items():
+        if key == "appointment_id":
+            continue
+        now.append(f"{key}: {value}")
+    text.append(" ".join(now))
+    text.append("Вы уверены, что хотите отменить эту запись?")
+    text = '\n'.join(text)
+
+    reply_keyboard = [["Да", "Нет"]]
+    await update.message.reply_text(
+        text,
+        reply_markup=ReplyKeyboardMarkup(
+            reply_keyboard, one_time_keyboard=True,
+        ),
+    )
+    return APPLY_CANCEL_APPOINTMENT
+
+
+
+
 
 
 
@@ -221,7 +279,6 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user = update.message.from_user
     logger.info(f"Username: {user.username}, his choice in menu is {update.message.text}")
 
-    # TODO: продролжить здесь...
     if (update.message.text  == "Записаться") :
             reply_keyboard = MOUTHS
     
@@ -233,10 +290,97 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             )
             return MOUTH_CHOOSE
     elif (update.message.text == "Получить список записей") :
-        pass
+        # TODO выгрузить из бд список записей
+        user_have_appointment = True
+        if (not user_have_appointment):
+            reply_keyboard = [["Записаться", "Получить список записей", "Отменить запись"]]
+            await update.message.reply_text(
+                "У тебя нет записей. Но ты всегда можешь записаться)) Выбери, что ты хочешь сделать?",
+                reply_markup=ReplyKeyboardMarkup(
+                    reply_keyboard, one_time_keyboard=True,
+                ),
+            )
+            return MENU
+        else:
+            # TODO получаем из бд данные о записях пользователя и кладем его в список
+            # (тут должен быть нормальный список)
+            appointments = [{"date": "12.12.24", "time": "13:00",
+                             "name of master": "Надя", "procedure": "Маникюр", "appointment_id": 1},
+                            {"date": "13.12.24", "time": "11:00", "name of master": "Лена",
+                             "procedure": "Стрижка", "appointment_id": 1}, ]
+            text = ["Вот список твоих записей"]
+            for i in range(len(appointments)):
+                now = [f"{i + 1}."]
+                for key, value in appointments[i].items():
+                    if key == "appointment_id":
+                        continue
+                    now.append(f"{key}: {value}")
+                text.append(",\t".join(now))
+            text = '\n'.join(text)
+            reply_keyboard = [["Записаться", "Получить список записей", "Отменить запись"]]
+            await update.message.reply_text(
+                text,
+                reply_markup=ReplyKeyboardMarkup(
+                    reply_keyboard, one_time_keyboard=True,
+                ),
+            )
+            return MENU
     elif (update.message.text == "Отменить запись") :
-        pass
-    return ConversationHandler.END
+        # TODO выгрузить из бд список записей
+        user_have_appointment = True
+        if (not user_have_appointment):
+            reply_keyboard = [["Записаться", "Получить список записей", "Отменить запись"]]
+            await update.message.reply_text(
+                "У тебя нет записей. Но ты всегда можешь записаться)) Выбери, что ты хочешь сделать?",
+                reply_markup=ReplyKeyboardMarkup(
+                    reply_keyboard, one_time_keyboard=True,
+                ),
+            )
+            return MENU
+        else:
+            # TODO получаем из бд данные о записях пользователя и кладем его в список
+            # (тут должен быть нормальный список)
+            appointments = [{"date": "12.12.24", "time": "13:00",
+                             "name of master": "Надя", "procedure": "Маникюр", "appointment_id": 1},
+                            {"date": "13.12.24", "time": "11:00", "name of master": "Лена",
+                             "procedure": "Стрижка", "appointment_id": 1}, ]
+            text = ["Вот список твоих записей"]
+
+            # сохраняем присвоенные номера, чтобы мы могли потом все удалить
+            context.user_data["list_for_cancel"] = {} # dict: number: appointment_id
+
+            numbers_for_user_answer = []
+
+            for i in range(len(appointments)):
+                now = [f"{i + 1}."]
+                numbers_for_user_answer.append(str(i+1))
+                for key, value in appointments[i].items():
+                    if key == "appointment_id":
+                        context.user_data["list_for_cancel"][i+1] = value
+                        continue
+                    now.append(f"{key}: {value}")
+                text.append(",\t".join(now))
+            text.append("\nВыбери номер записи, от которой ты хочешь отписаться")
+            text = '\n'.join(text)
+
+            reply_keyboard = [["Назад"], numbers_for_user_answer]
+            await update.message.reply_text(
+                text,
+                reply_markup=ReplyKeyboardMarkup(
+                    reply_keyboard, one_time_keyboard=True,
+                ),
+            )
+            return CHOOSE_CANCEL_APPOINTMENT
+    else:
+        print(123)
+        reply_keyboard = [["Записаться", "Получить список записей", "Отменить запись"]]
+        await update.message.reply_text(
+            "К сожалению я не понял твой ответ. Выбери пожалуйста вариант из клавиатуры.\n Выбери, что ты хочешь сделать?",
+            reply_markup=ReplyKeyboardMarkup(
+                reply_keyboard, one_time_keyboard=True,
+            ),
+        )
+        return MENU
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Cancels and ends the conversation."""
@@ -258,12 +402,12 @@ def main() -> None:
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
-            SIGN_UP_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, sign_up_name)],
-            SIGN_UP_PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, sign_up_phone)],
-            MENU: [MessageHandler(filters.Regex("^(Записаться|Получить список записей|Отменить запись)$"), menu)],
+            MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, menu)],
             MOUTH_CHOOSE: [MessageHandler(filters.TEXT & ~filters.COMMAND, mouth_choose)],
             DAY_CHOOSE: [MessageHandler(filters.TEXT & ~filters.COMMAND, day_choose)],
             TIME_CHOOSE: [MessageHandler(filters.TEXT & ~filters.COMMAND, time_choose)],
+            CHOOSE_CANCEL_APPOINTMENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_cancel_appointment)],
+            APPLY_CANCEL_APPOINTMENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, apply_cancel_appointment)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
     )
@@ -275,4 +419,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    main())
