@@ -21,24 +21,19 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
-MENU, MOUTH_CHOOSE, DAY_CHOOSE, TIME_CHOOSE, CHOOSE_CANCEL_APPOINTMENT, APPLY_CANCEL_APPOINTMENT = range(6)
+MENU, SERVICE_CHOOSE, MASTER_CHOOSE, DAY_CHOOSE, TIME_CHOOSE, CHOOSE_CANCEL_APPOINTMENT, APPLY_CANCEL_APPOINTMENT = range(7)
 
-CALENDAR_31 = [["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
-                    ["11", "12", "13", "14", "15", "16", "17", "18", "19", "20"],
-                    ["21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31"],
-                    ["Назад"]]
-CALENDAR_30 = [["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
-                    ["11", "12", "13", "14", "15", "16", "17", "18", "19", "20"],
-                    ["21", "22", "23", "24", "25", "26", "27", "28", "29", "30"], 
-                    ["Назад"]]
-CALENDAR_28 = [["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
-                    ["11", "12", "13", "14", "15", "16", "17", "18", "19", "20"],
-                    ["21", "22", "23", "24", "25", "26", "27", "28"],
-                    ["Назад"]]
-MOUTHS = [["Январь", "Февраль", "Март", "Апрель"],
-                ["Май", "Июнь", "Июль", "Август"],
-                ["Сентябрь", "Октябрь", "Ноябрь", "Декабрь"],
-                ["Назад"]]
+DAYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10",
+                    "11", "12", "13", "14", "15", "16", "17", "18", "19", "20",
+                    "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31"]
+
+SERVICES = ["Постричься", "Покраска волос", "Маникюр"]
+
+MASTERS = ["Амиран", "Екатерина", "Арина", "Роман", "Анна"]
+
+TIMES = ["11:00", "12:00", "13:00", "14:00", "15:00"]
+
+DL_ST = 3 # в некторых функциях отвечает за длину строки в таблице выводимых вариантов ответов
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Starts the conversation.
@@ -65,98 +60,34 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     )
     return MENU
 
-async def mouth_choose(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    if (update.message.text != "Назад"):
-
-        # TODO проверить, есть ли свободные слоты в выбранном месяце
-        mouth_free = True
-        context.user_data["mouth"] = update.message.text
-        if (mouth_free):
-            if (context.user_data["mouth"] in ["Январь", "Март", "Май", "Июль", "Сентябрь", "Ноябрь"]):
-                reply_keyboard = CALENDAR_31
-            elif(context.user_data["mouth"] == "Февраль"):
-                reply_keyboard = CALENDAR_28
-            else:
-                reply_keyboard = CALENDAR_30
-            
+async def service_choose(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if (update.message.text in context.user_data["services"]):
+        context.user_data["service"] = update.message.text
+        # TODO функция получения списка мастеров MASTERS или пустой список, если доступных мастеров нет
+        mst = MASTERS
+        context.user_data["masters"] = mst
+        if (len(mst) != 0):
+            reply_keyboard = [context.user_data["masters"][i:i+DL_ST] for i in range(0, len(context.user_data["masters"]), DL_ST)]
+            reply_keyboard.append(["Назад"])
             await update.message.reply_text(
-                "Выберите дату записи",
+                "Выбери мастера",
                 reply_markup=ReplyKeyboardMarkup(
                     reply_keyboard, one_time_keyboard=True,
                 ),
             )
-            return DAY_CHOOSE
+            return MASTER_CHOOSE
         else:
-            reply_keyboard = MOUTHS
-
+            context.user_data["services"] = SERVICES
+            reply_keyboard = [SERVICES[i:i+DL_ST] for i in range(0, len(SERVICES), DL_ST)]
+            reply_keyboard.append(["Назад"])
             await update.message.reply_text(
-                "В этом месяце нет доступных записей, выбери другой",
+                "Нету свободного мастера на данную услугу( Выбери другую услугу",
                 reply_markup=ReplyKeyboardMarkup(
                     reply_keyboard, one_time_keyboard=True,
                 ),
             )
-            return MOUTH_CHOOSE
-    else:
-        reply_keyboard = [["Записаться", "Получить список записей", "Отменить запись"]]
-        await update.message.reply_text(
-            "Выбери, что ты хочешь сделать?",
-            reply_markup=ReplyKeyboardMarkup(
-                reply_keyboard, one_time_keyboard=True,
-            ),
-        )
-        return MENU
-
-    
-
-async def day_choose(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    if (update.message.text != "Назад"):
-        # TODO проверить, есть ли свободные слоты в выбранном дне
-        day_free = True
-        context.user_data["day"] = update.message.text
-        if (day_free):
-            reply_keyboard = [["10:00-11:00", "11:00-12:00", "12:00-13:00"],
-                              ["Назад"]]
-
-            # TODO настроить, чтобы отображалсь только возможные интервалы, которые свободны
-            
-            await update.message.reply_text(
-                "Выберите время записи",
-                reply_markup=ReplyKeyboardMarkup(
-                    reply_keyboard, one_time_keyboard=True,
-                ),
-            )
-            return TIME_CHOOSE
-        else:
-            if (context.user_data["mouth"] in ["Январь", "Март", "Май", "Июль", "Сентябрь", "Ноябрь"]):
-                reply_keyboard = CALENDAR_31
-            elif(context.user_data["mouth"] == "Февраль"):
-                reply_keyboard = CALENDAR_28
-            else:
-                reply_keyboard = CALENDAR_30
-                
-            await update.message.reply_text(
-                "В этот день нету свободной записи, выбери другой",
-                reply_markup=ReplyKeyboardMarkup(
-                    reply_keyboard, one_time_keyboard=True,
-                ),
-            )
-            return DAY_CHOOSE
-    else:
-        reply_keyboard = MOUTHS
-    
-        await update.message.reply_text(
-            "Выберите месяц записи текущего года",
-            reply_markup=ReplyKeyboardMarkup(
-                reply_keyboard, one_time_keyboard=True,
-            ),
-        )
-        return MOUTH_CHOOSE
-
-async def time_choose(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    if (update.message.text != "Назад"):
-
-        # TODO перенести в бд данные о записи
-        await update.message.reply_text(f"Вы записались на {context.user_data["day"]} {context.user_data["mouth"]} {update.message.text}") 
+            return SERVICE_CHOOSE
+    elif (update.message.text  == "Назад"):
         reply_keyboard = [["Записаться", "Получить список записей", "Отменить запись"]]
         await update.message.reply_text(
             "Выбери, что ты хочешь сделать?",
@@ -166,20 +97,125 @@ async def time_choose(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         )
         return MENU
     else:
-        if (context.user_data["mouth"] in ["Январь", "Март", "Май", "Июль", "Сентябрь", "Ноябрь"]):
-            reply_keyboard = CALENDAR_31
-        elif(context.user_data["mouth"] == "Февраль"):
-            reply_keyboard = CALENDAR_28
-        else:
-            reply_keyboard = CALENDAR_30
-            
+        reply_keyboard = [context.user_data["services"][i:i+DL_ST] for i in range(0, len(context.user_data["services"]), DL_ST)]
+        reply_keyboard.append(["Назад"])
         await update.message.reply_text(
-            "Выберите время записи",
+            "Выбери из предложенных вариантов услуг!!!",
+            reply_markup=ReplyKeyboardMarkup(
+                reply_keyboard, one_time_keyboard=True,
+            ),
+        )
+        return SERVICE_CHOOSE
+
+    
+
+async def master_choose(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if (update.message.text in context.user_data["masters"]):
+        context.user_data["master"] = update.message.text
+        # TODO функция получения списка свободных дней DAYS
+        days = DAYS
+        context.user_data["days"] = days
+        reply_keyboard = [context.user_data["days"][i:i+10] for i in range(0, len(context.user_data["days"]), 10)]
+        reply_keyboard.append(["Назад"])
+        await update.message.reply_text(
+            "Выбери удобный вам день",
             reply_markup=ReplyKeyboardMarkup(
                 reply_keyboard, one_time_keyboard=True,
             ),
         )
         return DAY_CHOOSE
+    elif (update.message.text  == "Назад"):
+        context.user_data["services"] = SERVICES
+        reply_keyboard = [SERVICES[i:i+DL_ST] for i in range(0, len(SERVICES), DL_ST)]
+        reply_keyboard.append(["Назад"])
+        await update.message.reply_text(
+            "Выбери услугу, на которую хотели бы записаться",
+            reply_markup=ReplyKeyboardMarkup(
+                reply_keyboard, one_time_keyboard=True,
+            ),
+        )
+        return SERVICE_CHOOSE
+    else:
+        reply_keyboard = [context.user_data["masters"][i:i+DL_ST] for i in range(0, len(context.user_data["masters"]), DL_ST)]
+        reply_keyboard.append(["Назад"])
+        await update.message.reply_text(
+            "Выбери предложенного мастера!!!",
+            reply_markup=ReplyKeyboardMarkup(
+                reply_keyboard, one_time_keyboard=True,
+            ),
+        )
+        return MASTER_CHOOSE
+    
+
+async def day_choose(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if (update.message.text in context.user_data["days"]):
+        context.user_data["day"] = update.message.text
+        # TODO функция получения списка свободных часов
+        time = TIMES
+        context.user_data["times"] = time
+        reply_keyboard = [context.user_data["times"][i:i+DL_ST] for i in range(0, len(context.user_data["times"]), DL_ST)]
+        reply_keyboard.append(["Назад"])
+        await update.message.reply_text(
+            "Выбери удобное вам время",
+            reply_markup=ReplyKeyboardMarkup(
+                reply_keyboard, one_time_keyboard=True,
+            ),
+        )
+        return TIME_CHOOSE
+    elif (update.message.text  == "Назад"):
+        reply_keyboard = [context.user_data["masters"][i:i+DL_ST] for i in range(0, len(context.user_data["masters"]), DL_ST)]
+        reply_keyboard.append(["Назад"])
+        await update.message.reply_text(
+            "Выбери мастера",
+            reply_markup=ReplyKeyboardMarkup(
+                reply_keyboard, one_time_keyboard=True,
+            ),
+        )
+        return MASTER_CHOOSE
+    else:
+        reply_keyboard = [context.user_data["days"][i:i+10] for i in range(0, len(context.user_data["days"]), 10)]
+        reply_keyboard.append(["Назад"])
+        await update.message.reply_text(
+            "Выбери из предложенных дней!!!",
+            reply_markup=ReplyKeyboardMarkup(
+                reply_keyboard, one_time_keyboard=True,
+            ),
+        )
+        return DAY_CHOOSE
+
+async def time_choose(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if (update.message.text in context.user_data["times"]):
+        context.user_data["time"] = update.message.text
+        # TODO передать в бд service, master, day, time, id
+        await update.message.reply_text(f"Вы записаны на услугу: {context.user_data["service"]} к мастеру: {context.user_data["master"]} на {context.user_data["day"]} число к {context.user_data["time"]}")
+        reply_keyboard = [["Записаться", "Получить список записей", "Отменить запись"]]
+        await update.message.reply_text(
+            "Выбери, что ты хочешь сделать?",
+            reply_markup=ReplyKeyboardMarkup(
+                reply_keyboard, one_time_keyboard=True,
+            ),
+        )
+        return MENU
+    elif (update.message.text  == "Назад"):
+        reply_keyboard = [context.user_data["days"][i:i+10] for i in range(0, len(context.user_data["days"]), 10)]
+        reply_keyboard.append(["Назад"])
+        await update.message.reply_text(
+            "Выбери удобный вам день",
+            reply_markup=ReplyKeyboardMarkup(
+                reply_keyboard, one_time_keyboard=True,
+            ),
+        )
+        return DAY_CHOOSE
+    else:
+        reply_keyboard = [context.user_data["times"][i:i+DL_ST] for i in range(len(0, context.user_data["times"]), DL_ST)]
+        reply_keyboard.append(["Назад"])
+        await update.message.reply_text(
+            "Выбери из предоженного времени!!!",
+            reply_markup=ReplyKeyboardMarkup(
+                reply_keyboard, one_time_keyboard=True,
+            ),
+        )
+        return TIME_CHOOSE
 
 
 async def apply_cancel_appointment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -270,9 +306,6 @@ async def choose_cancel_appointment(update: Update, context: ContextTypes.DEFAUL
 
 
 
-
-
-
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Get the information from user`s answer what he want to do and show him what he wanted"""
 
@@ -280,15 +313,16 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     logger.info(f"Username: {user.username}, his choice in menu is {update.message.text}")
 
     if (update.message.text  == "Записаться") :
-            reply_keyboard = MOUTHS
-    
-            await update.message.reply_text(
-                "Выберите месяц записи текущего года",
-                reply_markup=ReplyKeyboardMarkup(
-                    reply_keyboard, one_time_keyboard=True,
-                ),
-            )
-            return MOUTH_CHOOSE
+        context.user_data["services"] = SERVICES
+        reply_keyboard = [SERVICES[i:i+DL_ST] for i in range(0, len(SERVICES), DL_ST)]
+        reply_keyboard.append(["Назад"])
+        await update.message.reply_text(
+            "Выбери услугу, на которую хотечешь записаться",
+            reply_markup=ReplyKeyboardMarkup(
+                reply_keyboard, one_time_keyboard=True,
+            ),
+        )
+        return SERVICE_CHOOSE
     elif (update.message.text == "Получить список записей") :
         # TODO выгрузить из бд список записей
         user_have_appointment = True
@@ -316,6 +350,7 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                         continue
                     now.append(f"{key}: {value}")
                 text.append(",\t".join(now))
+            text.append("\nВыбери, что ты хочешь сделать?")
             text = '\n'.join(text)
             reply_keyboard = [["Записаться", "Получить список записей", "Отменить запись"]]
             await update.message.reply_text(
@@ -372,7 +407,7 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             )
             return CHOOSE_CANCEL_APPOINTMENT
     else:
-        print(123)
+        #print(123)
         reply_keyboard = [["Записаться", "Получить список записей", "Отменить запись"]]
         await update.message.reply_text(
             "К сожалению я не понял твой ответ. Выбери пожалуйста вариант из клавиатуры.\n Выбери, что ты хочешь сделать?",
@@ -403,7 +438,8 @@ def main() -> None:
         entry_points=[CommandHandler("start", start)],
         states={
             MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, menu)],
-            MOUTH_CHOOSE: [MessageHandler(filters.TEXT & ~filters.COMMAND, mouth_choose)],
+            SERVICE_CHOOSE: [MessageHandler(filters.TEXT & ~filters.COMMAND, service_choose)],
+            MASTER_CHOOSE: [MessageHandler(filters.TEXT & ~filters.COMMAND, master_choose)],
             DAY_CHOOSE: [MessageHandler(filters.TEXT & ~filters.COMMAND, day_choose)],
             TIME_CHOOSE: [MessageHandler(filters.TEXT & ~filters.COMMAND, time_choose)],
             CHOOSE_CANCEL_APPOINTMENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_cancel_appointment)],
@@ -419,4 +455,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main())
+    main()
