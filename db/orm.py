@@ -54,8 +54,9 @@ class MasterService(Base):
 
 class Time(Base):
     __tablename__ = 'times'
+    id = Column(Integer, primary_key=True)
     time = Column(TIMESTAMP, nullable=False)
-    master_id = Column(Integer, ForeignKey('master_id.id'), primary_key=True)
+    master_id = Column(Integer, ForeignKey('master_id.id'))
     status = Column(Boolean, nullable=False)
 
     master = relationship("Master", back_populates="times")

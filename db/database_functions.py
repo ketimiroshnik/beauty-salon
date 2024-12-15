@@ -25,30 +25,33 @@ def add_user(session: Session, telegram_id: int, name: str):
 def get_masters_for_service(session: Session, service_id: int):
     """Выдает список мастеров выполняющих услугу с service_id со свободными слотами в ближайший месяц"""
     next_month = datetime.now() + timedelta(days=30)
-    masters = session.execute(
-        select(Master)
-        .join(MasterService, Master.id == MasterService.master_id)
+    available_masters = (
+        session.query(Master)
         .join(Time, Master.id == Time.master_id)
-        .where(
-            MasterService.service_id == service_id,
-            Master.is_active == True,
-            Time.status == True,
-            Time.time <= next_month
+        .join(MasterService, Master.id == MasterService.master_id)
+        .filter(
+            and_(
+                MasterService.service_id == service_id,
+                Time.status == True,
+                Time.time >= datetime.now(),
+                Time.time < next_month
+            )
         )
-    ).scalars().all()
-    return masters
+        .distinct()
+        .all()
+    )
+    return available_masters
 
 def get_free_days_for_master(session: Session, master_id: int):
     """Возвращает список дней когда у данного мастера есть хотя бы одна свободная запись"""
-    free_days = session.execute(
-        select(func.date(Time.time))
-        .where(
-            Time.master_id == master_id,
-            Time.status == True
-        )
-        .group_by(func.date(Time.time))
-    ).scalars().all()
-    return free_days
+    free_days = (
+        session.query(func.date(Time.time).label("free_date"))
+        .filter(Time.master_id == master_id, Time.status == True)
+        .distinct()
+        .order_by("free_date")
+        .all()
+    )
+    return [result.free_date for result in free_days]
 
 def get_timeslots_for_day(session: Session, master_id: int, day: datetime):
     """Возвращает свободные слоты мастера в определенный день"""
