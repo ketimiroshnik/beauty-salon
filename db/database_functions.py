@@ -2,6 +2,7 @@ from db.orm import *
 from datetime import datetime, timedelta
 from sqlalchemy import select, insert, and_, func, update
 from sqlalchemy.orm import Session
+import pandas as pd
 
 def get_client_id_by_telegram_id(session: Session, telegram_id: int):
     """Возвращает client_id по telegram_id. Если нет такого клиента, возвращает None"""
@@ -12,6 +13,39 @@ def get_client_id_by_telegram_id(session: Session, telegram_id: int):
     ).scalar()
     return client_id
 
+def get_admin_id_by_telegram_id(session: Session, telegram_id: int):
+    """Проверяет, является ли пользователь админом, если да, возвращает user_id, если нет, возвращает None"""
+    admin_id = session.execute(
+        select(User.id)
+        .where((User.telegram_id == telegram_id) & (User.role == "admin"))
+    ).scalar()
+    return 72 #TODO
+
+def get_table_profit_by_service(session: Session):
+    # Запрос данных: считаем количество записей и общий доход по каждой услуге
+    result = session.execute(
+        select(
+            Service.title.label('Услуга'),
+            func.count(Appointment.id).filter(Appointment.status == 1).label('Количество записей'),
+            Service.cost.label('Стоимость услуги'),
+            (func.count(Appointment.id).filter(Appointment.status == 1) * Service.cost).label(
+                'Общий доход за все записи')
+        )
+        .join(Appointment, Appointment.service_id == Service.id)
+        .group_by(Service.id)
+    ).all()
+
+    # Преобразуем результат в DataFrame для удобного отображения
+    data = [{
+        'Service': row[0],
+        'Количество записей': row[1],
+        'Стоимость услуги': row[2],
+        'Общий доход': row[3]
+    } for row in result]
+
+    data = pd.DataFrame(data)
+
+    return data
 
 def add_user(session: Session, telegram_id: int, name: str):
     """Добавляет user по telegram_id и сразу добавляет его в клиентов"""

@@ -2,6 +2,8 @@
 
 import logging
 import os
+import pandas as pd
+from io import StringIO
 
 from db.connection import session
 from db.database_functions import *
@@ -49,12 +51,10 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
-MENU, SERVICE_CHOOSE, MASTER_CHOOSE, DAY_CHOOSE, TIME_CHOOSE, CHOOSE_CANCEL_APPOINTMENT, APPLY_CANCEL_APPOINTMENT = range(
-    7)
+MENU, SERVICE_CHOOSE, MASTER_CHOOSE, DAY_CHOOSE, TIME_CHOOSE, CHOOSE_CANCEL_APPOINTMENT, APPLY_CANCEL_APPOINTMENT, ADMIN_MENU = range(8)
 
 DL_ST = 3  # в некторых функциях отвечает за длину строки в таблице выводимых вариантов ответов
 DURATION_OF_PROCEDURE = 2  # продолжительность процедур в часах
-
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Starts the conversation.
@@ -62,25 +62,38 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
        else show a menu"""
 
     telegram_id = update.message.from_user.id
-    client_id = get_client_id_by_telegram_id(session, telegram_id)
+    admin_id = get_admin_id_by_telegram_id(session, telegram_id)
 
-    if client_id is None:
-        name = update.message.from_user.first_name
-        client_id = add_user(session, telegram_id, name)
-        pass
+    if admin_id is not None:
+        context.user_data["admin_id"] = admin_id
 
-    context.user_data["client_id"] = client_id
+        reply_keyboard = [["получить статистику на данный момент"]]
+        await update.message.reply_text(
+            "Привет, админ! Я могу помочь тебе рассмотреть собранную статистику!\n",
+            reply_markup=ReplyKeyboardMarkup(
+                reply_keyboard, one_time_keyboard=True,
+            ),
+        )
+        return ADMIN_MENU
+    else:
+        client_id = get_client_id_by_telegram_id(session, telegram_id)
 
-    reply_keyboard = [["Записаться", "Получить список записей", "Отменить запись"]]
-    await update.message.reply_text(
-        "Привет! Я могу записать в салон и могу рассказать тебе о твоих записях!\n"
-        "Выбери, что ты хочешь сделать?",
-        reply_markup=ReplyKeyboardMarkup(
-            reply_keyboard, one_time_keyboard=True,
-        ),
-    )
-    return MENU
+        if client_id is None:
+            name = update.message.from_user.first_name
+            client_id = add_user(session, telegram_id, name)
+            pass
 
+        context.user_data["client_id"] = client_id
+
+        reply_keyboard = [["Записаться", "Получить список записей", "Отменить запись"]]
+        await update.message.reply_text(
+            "Привет! Я могу записать в салон и могу рассказать тебе о твоих записях!\n"
+            "Выбери, что ты хочешь сделать?",
+            reply_markup=ReplyKeyboardMarkup(
+                reply_keyboard, one_time_keyboard=True,
+            ),
+        )
+        return MENU
 
 async def service_choose(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if (update.message.text in [k.title for k in context.user_data["services"]]):
@@ -137,7 +150,6 @@ async def service_choose(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
         return SERVICE_CHOOSE
 
-
 async def master_choose(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if (update.message.text in [k.name for k in context.user_data["masters"]]):
 
@@ -181,7 +193,6 @@ async def master_choose(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         )
         return MASTER_CHOOSE
 
-
 async def day_choose(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if (update.message.text in context.user_data["days"]):
         context.user_data["day"] = datetime.strptime(update.message.text, '%Y-%m-%d')
@@ -222,7 +233,6 @@ async def day_choose(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             ),
         )
         return DAY_CHOOSE
-
 
 async def time_choose(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if (update.message.text in context.user_data["times"]):
@@ -274,7 +284,6 @@ async def time_choose(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         )
         return TIME_CHOOSE
 
-
 async def apply_cancel_appointment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     answer = update.message.text
     if answer.lower() == "нет":
@@ -306,7 +315,6 @@ async def apply_cancel_appointment(update: Update, context: ContextTypes.DEFAULT
             ),
         )
     return APPLY_CANCEL_APPOINTMENT
-
 
 async def choose_cancel_appointment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     answer = update.message.text
@@ -357,7 +365,6 @@ async def choose_cancel_appointment(update: Update, context: ContextTypes.DEFAUL
         ),
     )
     return APPLY_CANCEL_APPOINTMENT
-
 
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Get the information from user`s answer what he want to do and show him what he wanted"""
@@ -459,7 +466,6 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         )
         return MENU
 
-
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Cancels and ends the conversation."""
     user = update.message.from_user
@@ -470,6 +476,42 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     return ConversationHandler.END
 
+async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Get the information from user`s answer what he want to do and show him what he wanted"""
+
+    user = update.message.from_user
+    logger.info(f"Username: {user.username}, his choice in menu is {update.message.text}")
+
+    if (update.message.text == "получить статистику на данный момент"):
+        table = get_table_profit_by_service(session)
+        table_csv = table.to_csv(index=False)
+
+        file_buffer = StringIO(table_csv)
+        file_buffer.seek(0)  # Устанавливаем указатель на начало файла
+
+        await update.message.reply_document(
+            document=file_buffer,
+            filename="statistics.csv",
+            caption="Вот таблица со статистикой по записям на услуги"
+        )
+        reply_keyboard = [["получить статистику на данный момент"]]
+        await update.message.reply_text(
+            text="изволите еще чего нибудь?",
+            reply_markup=ReplyKeyboardMarkup(
+                reply_keyboard, one_time_keyboard=True,
+            ),
+        )
+
+        return ADMIN_MENU
+    else:
+        reply_keyboard = [["получить статистику на данный момент"]]
+        await update.message.reply_text(
+            "К сожалению я не понял твой ответ. Выбери пожалуйста вариант из клавиатуры.\n Выбери, что ты хочешь сделать?",
+            reply_markup=ReplyKeyboardMarkup(
+                reply_keyboard, one_time_keyboard=True,
+            ),
+        )
+        return ADMIN_MENU
 
 def main() -> None:
     """Run the bot."""
@@ -486,6 +528,7 @@ def main() -> None:
             TIME_CHOOSE: [MessageHandler(filters.TEXT & ~filters.COMMAND, time_choose)],
             CHOOSE_CANCEL_APPOINTMENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_cancel_appointment)],
             APPLY_CANCEL_APPOINTMENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, apply_cancel_appointment)],
+            ADMIN_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_menu)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
     )
