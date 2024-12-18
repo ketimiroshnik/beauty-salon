@@ -1,7 +1,7 @@
 import pytest
-from database_functions import *
-from connection import *
-from orm import *
+from db.database_functions import *
+from db.connection import *
+from db.orm import *
 
 @pytest.fixture(scope="function")
 def session():

@@ -1,4 +1,4 @@
-from orm import *
+from db.orm import *
 from datetime import datetime, timedelta
 from sqlalchemy import select, insert, and_, func, update
 from sqlalchemy.orm import Session
@@ -12,6 +12,7 @@ def get_client_id_by_telegram_id(session: Session, telegram_id: int):
     ).scalar()
     return client_id
 
+
 def add_user(session: Session, telegram_id: int, name: str):
     """Добавляет user по telegram_id и сразу добавляет его в клиентов"""
     new_user = User(telegram_id=telegram_id, role='client')
@@ -22,33 +23,44 @@ def add_user(session: Session, telegram_id: int, name: str):
     session.commit()
     return new_client.client_id
 
+
+def get_services(session: Session):
+    """Возвращает все услуги"""
+    return session.query(Service).all()
+
+
 def get_masters_for_service(session: Session, service_id: int):
     """Выдает список мастеров выполняющих услугу с service_id со свободными слотами в ближайший месяц"""
     next_month = datetime.now() + timedelta(days=30)
-    masters = session.execute(
-        select(Master)
-        .join(MasterService, Master.id == MasterService.master_id)
+    available_masters = (
+        session.query(Master)
         .join(Time, Master.id == Time.master_id)
-        .where(
-            MasterService.service_id == service_id,
-            Master.is_active == True,
-            Time.status == True,
-            Time.time <= next_month
+        .join(MasterService, Master.id == MasterService.master_id)
+        .filter(
+            and_(
+                MasterService.service_id == service_id,
+                Time.status == True,
+                Time.time >= datetime.now(),
+                Time.time < next_month
+            )
         )
-    ).scalars().all()
-    return masters
+        .distinct()
+        .all()
+    )
+    return available_masters
+
 
 def get_free_days_for_master(session: Session, master_id: int):
     """Возвращает список дней когда у данного мастера есть хотя бы одна свободная запись"""
-    free_days = session.execute(
-        select(func.date(Time.time))
-        .where(
-            Time.master_id == master_id,
-            Time.status == True
-        )
-        .group_by(func.date(Time.time))
-    ).scalars().all()
-    return free_days
+    free_days = (
+        session.query(func.date(Time.time).label("free_date"))
+        .filter(Time.master_id == master_id, Time.status == True)
+        .distinct()
+        .order_by("free_date")
+        .all()
+    )
+    return [result.free_date for result in free_days]
+
 
 def get_timeslots_for_day(session: Session, master_id: int, day: datetime):
     """Возвращает свободные слоты мастера в определенный день"""
@@ -61,6 +73,7 @@ def get_timeslots_for_day(session: Session, master_id: int, day: datetime):
         )
     ).scalars().all()
     return timeslots
+
 
 def create_appointment(session: Session, client_id: int, service_id: int, master_id: int, appointment_time: datetime):
     """Создает запись с заданными параметрами, возвращает id записи, поднимает ошибку если слот занят"""
@@ -84,8 +97,9 @@ def create_appointment(session: Session, client_id: int, service_id: int, master
     session.commit()
     return new_appointment.id
 
+
 def get_client_appointments(session: Session, client_id: int):
-    """Выдает все записи для клиента кроме отмененных как список словарей"""
+    """Выдает все записи для клиента кроме отмененных"""
     appointments = session.execute(
         select(Appointment, Client, Master, Service)
         .outerjoin(Client, Appointment.client_id == Client.client_id)
@@ -94,29 +108,8 @@ def get_client_appointments(session: Session, client_id: int):
         .where(Appointment.client_id == client_id, Appointment.status)
         .order_by(Appointment.appointment_time)
     ).all()
-    if not appointments:
-        return []
-    result = []
-    for app, client, master, service in appointments:
-        result.append({
-            "appointment_id": app.id,
-            "client": {
-                "id": client.client_id if client else None,
-                "name": client.name if client else "Unknown",
-            },
-            "master": {
-                "id": master.id if master else None,
-                "name": master.name if master else "N/A",
-            },
-            "service": {
-                "id": service.id if service else None,
-                "title": service.title if service else "N/A",
-                "cost": float(service.cost) if service else 0.0,
-            },
-            "appointment_time": app.appointment_time,
-            "status": app.status,
-        })
-    return result
+    return appointments
+
 
 def get_appointment_by_id(session: Session, appointment_id: int):
     """Возвращает запись по id. Если такой нет, то None"""
@@ -127,27 +120,8 @@ def get_appointment_by_id(session: Session, appointment_id: int):
         .outerjoin(Service, Appointment.service_id == Service.id)
         .where(Appointment.id == appointment_id)
     ).one_or_none()
-    if not appointment:
-        return None
-    app, client, master, service = appointment
-    return {
-        "appointment_id": app.id,
-        "client": {
-            "id": client.client_id if client else None,
-            "name": client.name if client else "Unknown",
-        },
-        "master": {
-            "id": master.id if master else None,
-            "name": master.name if master else "Unknown",
-        },
-        "service": {
-            "id": service.id if service else None,
-            "title": service.title if service else "Unknown",
-            "cost": float(service.cost) if service else 0.0,
-        },
-        "appointment_time": app.appointment_time,
-        "status": app.status,
-    }
+    return appointment
+
 
 def cancel_appointment(session: Session, appointment_id: int):
     """Выставляет статус 0 записи. Возвращает true если это что-то поменяло"""
