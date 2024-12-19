@@ -22,6 +22,13 @@ def get_admin_id_by_telegram_id(session: Session, telegram_id: int):
     return admin_id
 
 def get_table_profit_by_service(session: Session):
+    """
+    Запрос на получение таблицы со столбцами:
+    1. Услуга
+    2. Количество записей на данную услугу
+    3. Стоимость услуги
+    4. Общий доход по данной услуге (цена * количество)
+    """
     # Запрос данных: считаем количество записей и общий доход по каждой услуге
     result = session.execute(
         select(
@@ -33,19 +40,56 @@ def get_table_profit_by_service(session: Session):
         )
         .join(Appointment, Appointment.service_id == Service.id)
         .group_by(Service.id)
+        .order_by(
+            (func.count(Appointment.id).filter(Appointment.status == 1) * Service.cost).desc()
+        )
     ).all()
 
-    # Преобразуем результат в DataFrame для удобного отображения
-    data = [{
-        'Service': row[0],
-        'Количество записей': row[1],
-        'Стоимость услуги': row[2],
-        'Общий доход': row[3]
-    } for row in result]
+    result = pd.DataFrame(result)
 
-    data = pd.DataFrame(data)
+    return result
 
-    return data
+def get_table_new_clients_per_time(session: Session):
+    """
+    Запрос на получение таблицы со столбцами:
+    1. Дата
+    2. Количество новых клиентов в эту дату
+    """
+    result = session.query(
+        func.date(Client.time_registered).label('date'),
+        func.count(Client.client_id).label('new_clients')
+    ).group_by(func.date(Client.time_registered)).all()
+
+    result = pd.DataFrame(result)
+
+    return result
+
+def get_table_work_masters(session: Session):
+    """
+    Запрос на получение таблицы со столбцами:
+    1. Имя мастера
+    2. Количество выполненных услуг
+    3. Общая стоимость выполненных услуг
+    """
+    result = session.query(
+        Master.name.label('имя мастера'),
+        func.count(Appointment.id).label('количество выполненных услуг'),
+        func.sum(Service.cost).label('общая стоимость услуг')
+    ).join(
+        Appointment, Appointment.master_id == Master.id
+    ).join(
+        Service, Service.id == Appointment.service_id
+    ).filter(
+        Appointment.status == 1  # Статус 1, значит услуга выполнена
+    ).group_by(
+        Master.id
+    ).order_by(
+        func.count(Appointment.id).desc()  # Сортировка по количеству
+    ).all()
+
+    result = pd.DataFrame(result)
+
+    return result
 
 def add_user(session: Session, telegram_id: int, name: str):
     """Добавляет user по telegram_id и сразу добавляет его в клиентов"""
