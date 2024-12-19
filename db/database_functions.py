@@ -19,7 +19,7 @@ def get_admin_id_by_telegram_id(session: Session, telegram_id: int):
         select(User.id)
         .where((User.telegram_id == telegram_id) & (User.role == "admin"))
     ).scalar()
-    return 72 #TODO
+    return admin_id
 
 def get_table_profit_by_service(session: Session):
     # Запрос данных: считаем количество записей и общий доход по каждой услуге
