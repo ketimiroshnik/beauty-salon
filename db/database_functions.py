@@ -19,7 +19,15 @@ def get_admin_id_by_telegram_id(session: Session, telegram_id: int):
         select(User.id)
         .where((User.telegram_id == telegram_id) & (User.role == "admin"))
     ).scalar()
-    return 72
+    return None
+
+
+def get_master_id_by_telegram_id(session: Session, telegram_id: int):
+    """Проверяет, является ли пользователь мастером, если да, возвращает user_id, если нет, возвращает None"""
+    # TODO: Допиши пожалуйста!!!
+    master_id = None
+    master_id = 1
+    return master_id
 
 def get_table_profit_by_service(session: Session):
     """
@@ -188,6 +196,12 @@ def create_appointment(session: Session, client_id: int, service_id: int, master
     )
     session.commit()
     return new_appointment.id
+
+
+def create_new_appointment(session: Session, master_id: int, appointment_time: datetime):
+    """ Создает окно с заданными парамеирами"""
+    # TODO: допиши пожалуйста
+    pass
 
 
 def get_client_appointments(session: Session, client_id: int):
