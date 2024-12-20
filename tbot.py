@@ -15,6 +15,7 @@ from telegram.ext import (
     ConversationHandler,
     MessageHandler,
     filters,
+    CallbackContext
 )
 from datetime import datetime
 from urllib.parse import quote
@@ -51,7 +52,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
-MENU, SERVICE_CHOOSE, MASTER_CHOOSE, DAY_CHOOSE, TIME_CHOOSE, CHOOSE_CANCEL_APPOINTMENT, APPLY_CANCEL_APPOINTMENT, ADMIN_MENU = range(8)
+MENU, SERVICE_CHOOSE, MASTER_CHOOSE, DAY_CHOOSE, TIME_CHOOSE, CHOOSE_CANCEL_APPOINTMENT, APPLY_CANCEL_APPOINTMENT, ADMIN_MENU, ADMIN_ADD_MASTER = range(9)
 
 DL_ST = 3  # в некторых функциях отвечает за длину строки в таблице выводимых вариантов ответов
 DURATION_OF_PROCEDURE = 2  # продолжительность процедур в часах
@@ -67,7 +68,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if admin_id is not None:
         context.user_data["admin_id"] = admin_id
 
-        reply_keyboard = [["получить статистику на данный момент"]]
+        reply_keyboard = [["получить статистику на данный момент", "Добавить мастера"]]
         await update.message.reply_text(
             "Привет, админ! Я могу помочь тебе рассмотреть собранную статистику!\n",
             reply_markup=ReplyKeyboardMarkup(
@@ -586,7 +587,7 @@ async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user = update.message.from_user
     logger.info(f"Username: {user.username}, his choice in menu is {update.message.text}")
 
-    if (update.message.text == "получить статистику на данный момент"):
+    if update.message.text == "получить статистику на данный момент":
         file_name = get_statistics_file()
 
         await update.message.reply_document(
@@ -595,7 +596,7 @@ async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             caption="Вот таблица со статистикой"
         )
         os.remove(file_name)
-        reply_keyboard = [["получить статистику на данный момент"]]
+        reply_keyboard = [["получить статистику на данный момент", "Добавить мастера"]]
         await update.message.reply_text(
             text="изволите еще чего нибудь?",
             reply_markup=ReplyKeyboardMarkup(
@@ -604,8 +605,11 @@ async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         )
 
         return ADMIN_MENU
+    elif update.message.text == "Добавить мастера":
+        await update.message.reply_text("Перешли мне какое нибудь сообщение нового мастера.")
+        return ADMIN_ADD_MASTER
     else:
-        reply_keyboard = [["получить статистику на данный момент"]]
+        reply_keyboard = [["получить статистику на данный момент", "Добавить мастера"]]
         await update.message.reply_text(
             "К сожалению я не понял твой ответ. Выбери пожалуйста вариант из клавиатуры.\n Выбери, что ты хочешь сделать?",
             reply_markup=ReplyKeyboardMarkup(
@@ -613,6 +617,25 @@ async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             ),
         )
         return ADMIN_MENU
+
+async def admin_add_master(update: Update, context: CallbackContext) -> int:
+    if 'forward_from' in update.message.api_kwargs:
+        telegram_id = update.message.api_kwargs['forward_from']['id']
+
+        master_id = get_client_id_by_telegram_id(session, telegram_id)
+
+        if master_id is None:
+            name = update.message.api_kwargs['forward_from']['first_name']
+            master_id = add_user(session, telegram_id, name)
+
+        if set_master_state(session, master_id):
+            await update.message.reply_text(f"Вы успешно выдали роль мастера!")
+        else:
+            await update.message.reply_text(f"Что то пошло не так. Попробуйте попозже.")
+    else:
+        await update.message.reply_text(f"Вы не переслали сообщение")
+
+    return ADMIN_MENU
 
 def main() -> None:
     """Run the bot."""
@@ -630,6 +653,7 @@ def main() -> None:
             CHOOSE_CANCEL_APPOINTMENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_cancel_appointment)],
             APPLY_CANCEL_APPOINTMENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, apply_cancel_appointment)],
             ADMIN_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_menu)],
+            ADMIN_ADD_MASTER: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_add_master)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
     )

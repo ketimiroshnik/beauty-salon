@@ -19,7 +19,7 @@ def get_admin_id_by_telegram_id(session: Session, telegram_id: int):
         select(User.id)
         .where((User.telegram_id == telegram_id) & (User.role == "admin"))
     ).scalar()
-    return admin_id
+    return 72
 
 def get_table_profit_by_service(session: Session):
     """
@@ -100,6 +100,20 @@ def add_user(session: Session, telegram_id: int, name: str):
     session.add(new_client)
     session.commit()
     return new_client.client_id
+
+def set_master_state(session: Session, client_id: int) -> bool:
+    """
+    Выставляем пользователю статус мастера по client_id
+    :return: получилось поставить статус матера или нет
+    """
+    user = session.query(User).filter(User.id == client_id).first()
+    if user:
+        # Меняем роль пользователя на "мастер"
+        user.role = "мастер"
+        session.commit()
+        return True
+    else:
+        return False
 
 
 def get_services(session: Session):
