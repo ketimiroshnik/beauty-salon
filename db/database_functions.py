@@ -17,10 +17,10 @@ def get_admin_id_by_telegram_id(session: Session, telegram_id: int):
     """Проверяет, является ли пользователь админом, если да, возвращает user_id, если нет, возвращает None"""
     admin_id = session.execute(
         select(User.id)
-        .where((User.telegram_id == telegram_id) & (User.role == "admin"))
+        .where((User.telegram_id == telegram_id) & (User.role == "администратор"))
     ).scalar()
-    return None
-
+    return admin_id
+  
 
 def get_master_id_by_telegram_id(session: Session, telegram_id: int):
     """Проверяет, является ли пользователь мастером, если да, возвращает user_id, если нет, возвращает None"""
@@ -202,7 +202,7 @@ def create_new_timeslot(session: Session, master_id: int, timeslot_time: datetim
     """ Создает окно с заданными параметрами"""
     existing_timeslot = session.query(Time).filter_by(master_id=master_id, time=timeslot_time).first()
     if existing_timeslot:
-        return
+        return None
     new_timeslot = Time(
         master_id=master_id,
         time=timeslot_time,
@@ -210,7 +210,24 @@ def create_new_timeslot(session: Session, master_id: int, timeslot_time: datetim
     )
     session.add(new_timeslot)
     session.commit()
+    return new_timeslot.id
 
+def create_service(session: Session, title: str, description: str, cost: int):
+    """Создает услугу с заданными параметрами, возвращает id услуги"""
+
+    new_service = Service(title=title, description=description, cost=cost)
+    session.add(new_service)
+    session.commit()
+    return new_service.id
+
+
+def get_service_by_title(session: Session, title: str):
+    service = session.execute(
+        select(Service)
+        .where((Service.title == title))
+    ).one_or_none()
+
+    return service
 
 def get_client_appointments(session: Session, client_id: int):
     """Выдает все записи для клиента кроме отмененных"""
