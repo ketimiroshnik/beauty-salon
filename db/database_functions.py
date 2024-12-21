@@ -118,7 +118,14 @@ def set_master_state(session: Session, client_id: int) -> bool:
     if user:
         # Меняем роль пользователя на "мастер"
         user.role = "мастер"
-        session.commit()
+        try:
+            client_query = session.query(Client).filter(Client.client_id == client_id).first()
+            master = Master(id = client_id, name = client_query.name, description = "")
+            session.add(master)
+            session.commit()
+        except Exception as e:
+            session.rollback()
+            return False
         return True
     else:
         return False
@@ -202,7 +209,7 @@ def create_new_timeslot(session: Session, master_id: int, timeslot_time: datetim
     """ Создает окно с заданными параметрами"""
     existing_timeslot = session.query(Time).filter_by(master_id=master_id, time=timeslot_time).first()
     if existing_timeslot:
-        return
+        return False
     new_timeslot = Time(
         master_id=master_id,
         time=timeslot_time,
@@ -225,8 +232,8 @@ def get_service_by_title(session: Session, title: str):
         select(Service)
         .where((Service.title == title))
     ).one_or_none()
-
     return service
+
 
 def get_client_appointments(session: Session, client_id: int):
     """Выдает все записи для клиента кроме отмененных"""
@@ -261,9 +268,10 @@ def add_service_master_connection(session: Session, master_id: int, service_id: 
         service_id=service_id
     ).first()
     if existing_connection:
-        return
+        return False
     session.add(MasterService(master_id = master_id, service_id = service_id))
     session.commit()
+    return True
 
 
 def get_master_timeslots(session: Session, master_id: int):
