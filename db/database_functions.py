@@ -202,7 +202,7 @@ def create_new_timeslot(session: Session, master_id: int, timeslot_time: datetim
     """ Создает окно с заданными параметрами"""
     existing_timeslot = session.query(Time).filter_by(master_id=master_id, time=timeslot_time).first()
     if existing_timeslot:
-        return None
+        return
     new_timeslot = Time(
         master_id=master_id,
         time=timeslot_time,
@@ -214,7 +214,6 @@ def create_new_timeslot(session: Session, master_id: int, timeslot_time: datetim
 
 def create_service(session: Session, title: str, description: str, cost: int):
     """Создает услугу с заданными параметрами, возвращает id услуги"""
-
     new_service = Service(title=title, description=description, cost=cost)
     session.add(new_service)
     session.commit()
@@ -255,13 +254,25 @@ def get_master_appointments(session: Session, master_id: int):
     return appointments
 
 
+def add_service_master_connection(session: Session, master_id: int, service_id: int):
+    """Добавляет мастеру услугу по id"""
+    existing_connection = session.query(MasterService).filter_by(
+        master_id=master_id,
+        service_id=service_id
+    ).first()
+    if existing_connection:
+        return
+    session.add(MasterService(master_id = master_id, service_id = service_id))
+    session.commit()
+
+
 def get_master_timeslots(session: Session, master_id: int):
-    """Возвращает свободные слоты мастера в определенный день"""
+    """Возвращает предстоящие слоты мастера"""
     timeslots = session.execute(
         select(Time)
         .where(
             Time.master_id == master_id,
-            Time.status == True
+            Time.time >= datetime.now(),
         )
         .order_by(Time.time)
     ).scalars().all()
