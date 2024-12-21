@@ -20,14 +20,14 @@ def get_admin_id_by_telegram_id(session: Session, telegram_id: int):
         .where((User.telegram_id == telegram_id) & (User.role == "администратор"))
     ).scalar()
     return admin_id
-
+  
 
 def get_master_id_by_telegram_id(session: Session, telegram_id: int):
     """Проверяет, является ли пользователь мастером, если да, возвращает user_id, если нет, возвращает None"""
-    # TODO: Допиши пожалуйста!!!
-    master_id = None
-    # master_id = 1
-    return master_id
+    user = session.query(User).filter_by(telegram_id=telegram_id).first()
+    if user and user.role == 'мастер':
+        return user.id
+    return None
 
 def get_table_profit_by_service(session: Session):
     """
@@ -198,10 +198,19 @@ def create_appointment(session: Session, client_id: int, service_id: int, master
     return new_appointment.id
 
 
-def create_new_appointment(session: Session, master_id: int, appointment_time: datetime):
-    """ Создает окно с заданными парамеирами"""
-    # TODO: допиши пожалуйста
-    pass
+def create_new_timeslot(session: Session, master_id: int, timeslot_time: datetime):
+    """ Создает окно с заданными параметрами"""
+    existing_timeslot = session.query(Time).filter_by(master_id=master_id, time=timeslot_time).first()
+    if existing_timeslot:
+        return None
+    new_timeslot = Time(
+        master_id=master_id,
+        time=timeslot_time,
+        status=True
+    )
+    session.add(new_timeslot)
+    session.commit()
+    return new_timeslot.id
 
 def create_service(session: Session, title: str, description: str, cost: int):
     """Создает услугу с заданными параметрами, возвращает id услуги"""
@@ -210,6 +219,7 @@ def create_service(session: Session, title: str, description: str, cost: int):
     session.add(new_service)
     session.commit()
     return new_service.id
+
 
 def get_service_by_title(session: Session, title: str):
     service = session.execute(
@@ -227,6 +237,19 @@ def get_client_appointments(session: Session, client_id: int):
         .outerjoin(Master, Appointment.master_id == Master.id)
         .outerjoin(Service, Appointment.service_id == Service.id)
         .where(Appointment.client_id == client_id, Appointment.status)
+        .order_by(Appointment.appointment_time)
+    ).all()
+    return appointments
+
+
+def get_master_appointments(session: Session, master_id: int):
+    """Выдает все записи для мастера кроме отмененных и прошедших"""
+    appointments = session.execute(
+        select(Appointment, Client, Master, Service)
+        .outerjoin(Client, Appointment.client_id == Client.client_id)
+        .outerjoin(Master, Appointment.master_id == Master.id)
+        .outerjoin(Service, Appointment.service_id == Service.id)
+        .where(Appointment.master_id == master_id, Appointment.status, Appointment.appointment_time >= datetime.now())
         .order_by(Appointment.appointment_time)
     ).all()
     return appointments

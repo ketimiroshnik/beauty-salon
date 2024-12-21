@@ -17,6 +17,7 @@ from telegram.ext import (
     CallbackContext
 )
 
+
 TOKEN = os.getenv("TOKEN")
 
 # Enable logging
@@ -34,6 +35,7 @@ DL_ST = 3  # в некторых функциях отвечает за длин
 DURATION_OF_PROCEDURE = 2  # продолжительность процедур в часах
 
 admin_reply_keyboard = [["Получить статистику на данный момент", "Добавить мастера", "Добавить услугу"]]
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Starts the conversation.
        If user is new so add him to data_base,
@@ -45,7 +47,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     if admin_id is not None:
         context.user_data["admin_id"] = admin_id
-
         await update.message.reply_text(
             "Привет, админ! Выбери, что ты хочешь сделать?\n",
             reply_markup=ReplyKeyboardMarkup(
@@ -479,9 +480,7 @@ async def time_choose_master(update: Update, context: ContextTypes.DEFAULT_TYPE)
         date_object = context.user_data["date"]
         time_object = datetime.strptime(answer, '%H:%M').time()
         combined_datetime = datetime.combine(date_object.date(), time_object)
-
-        create_new_appointment(session, context.user_data["master_id"], combined_datetime)  # создали окно
-
+        create_new_timeslot(session, context.user_data["master_id"], combined_datetime)  # создали окно
         formatted_datetime = combined_datetime.strftime('%d.%m.%Y %H:%M')
         reply_keyboard = [["Получить список предстоящих записей клиентов", "Добавить окошко"]]
         await update.message.reply_text(
@@ -728,7 +727,6 @@ async def admin_add_service_choice_price(update: Update, context: CallbackContex
                 admin_reply_keyboard, one_time_keyboard=True,
             ),
         )
-
     return ADMIN_MENU
 
 def main() -> None:
