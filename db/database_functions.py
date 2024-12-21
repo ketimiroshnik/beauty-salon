@@ -2,6 +2,7 @@ from db.orm import *
 from datetime import datetime, timedelta
 from sqlalchemy import select, insert, and_, func, update
 from sqlalchemy.orm import Session
+import pandas as pd
 
 def get_client_id_by_telegram_id(session: Session, telegram_id: int):
     """Возвращает client_id по telegram_id. Если нет такого клиента, возвращает None"""
@@ -12,6 +13,91 @@ def get_client_id_by_telegram_id(session: Session, telegram_id: int):
     ).scalar()
     return client_id
 
+def get_admin_id_by_telegram_id(session: Session, telegram_id: int):
+    """Проверяет, является ли пользователь админом, если да, возвращает user_id, если нет, возвращает None"""
+    admin_id = session.execute(
+        select(User.id)
+        .where((User.telegram_id == telegram_id) & (User.role == "admin"))
+    ).scalar()
+    return None
+
+
+def get_master_id_by_telegram_id(session: Session, telegram_id: int):
+    """Проверяет, является ли пользователь мастером, если да, возвращает user_id, если нет, возвращает None"""
+    user = session.query(User).filter_by(telegram_id=telegram_id).first()
+    if user and user.role == 'мастер':
+        return user.id
+    return None
+
+def get_table_profit_by_service(session: Session):
+    """
+    Запрос на получение таблицы со столбцами:
+    1. Услуга
+    2. Количество записей на данную услугу
+    3. Стоимость услуги
+    4. Общий доход по данной услуге (цена * количество)
+    """
+    # Запрос данных: считаем количество записей и общий доход по каждой услуге
+    result = session.execute(
+        select(
+            Service.title.label('Услуга'),
+            func.count(Appointment.id).filter(Appointment.status == 1).label('Количество записей'),
+            Service.cost.label('Стоимость услуги'),
+            (func.count(Appointment.id).filter(Appointment.status == 1) * Service.cost).label(
+                'Общий доход за все записи')
+        )
+        .join(Appointment, Appointment.service_id == Service.id)
+        .group_by(Service.id)
+        .order_by(
+            (func.count(Appointment.id).filter(Appointment.status == 1) * Service.cost).desc()
+        )
+    ).all()
+
+    result = pd.DataFrame(result)
+
+    return result
+
+def get_table_new_clients_per_time(session: Session):
+    """
+    Запрос на получение таблицы со столбцами:
+    1. Дата
+    2. Количество новых клиентов в эту дату
+    """
+    result = session.query(
+        func.date(Client.time_registered).label('date'),
+        func.count(Client.client_id).label('new_clients')
+    ).group_by(func.date(Client.time_registered)).all()
+
+    result = pd.DataFrame(result)
+
+    return result
+
+def get_table_work_masters(session: Session):
+    """
+    Запрос на получение таблицы со столбцами:
+    1. Имя мастера
+    2. Количество выполненных услуг
+    3. Общая стоимость выполненных услуг
+    """
+    result = session.query(
+        Master.name.label('имя мастера'),
+        func.count(Appointment.id).label('количество выполненных услуг'),
+        func.sum(Service.cost).label('общая стоимость услуг')
+    ).join(
+        Appointment, Appointment.master_id == Master.id
+    ).join(
+        Service, Service.id == Appointment.service_id
+    ).filter(
+        Appointment.status == 1  # Статус 1, значит услуга выполнена
+    ).group_by(
+        Master.id
+    ).order_by(
+        func.count(Appointment.id).desc()  # Сортировка по количеству
+    ).all()
+
+    result = pd.DataFrame(result)
+
+    return result
 
 def add_user(session: Session, telegram_id: int, name: str):
     """Добавляет user по telegram_id и сразу добавляет его в клиентов"""
@@ -22,6 +108,20 @@ def add_user(session: Session, telegram_id: int, name: str):
     session.add(new_client)
     session.commit()
     return new_client.client_id
+
+def set_master_state(session: Session, client_id: int) -> bool:
+    """
+    Выставляем пользователю статус мастера по client_id
+    :return: получилось поставить статус матера или нет
+    """
+    user = session.query(User).filter(User.id == client_id).first()
+    if user:
+        # Меняем роль пользователя на "мастер"
+        user.role = "мастер"
+        session.commit()
+        return True
+    else:
+        return False
 
 
 def get_services(session: Session):
@@ -98,6 +198,20 @@ def create_appointment(session: Session, client_id: int, service_id: int, master
     return new_appointment.id
 
 
+def create_new_timeslot(session: Session, master_id: int, timeslot_time: datetime):
+    """ Создает окно с заданными параметрами"""
+    existing_timeslot = session.query(Time).filter_by(master_id=master_id, time=timeslot_time).first()
+    if existing_timeslot:
+        return
+    new_timeslot = Time(
+        master_id=master_id,
+        time=timeslot_time,
+        status=True
+    )
+    session.add(new_timeslot)
+    session.commit()
+
+
 def get_client_appointments(session: Session, client_id: int):
     """Выдает все записи для клиента кроме отмененных"""
     appointments = session.execute(
@@ -106,6 +220,19 @@ def get_client_appointments(session: Session, client_id: int):
         .outerjoin(Master, Appointment.master_id == Master.id)
         .outerjoin(Service, Appointment.service_id == Service.id)
         .where(Appointment.client_id == client_id, Appointment.status)
+        .order_by(Appointment.appointment_time)
+    ).all()
+    return appointments
+
+
+def get_master_appointments(session: Session, master_id: int):
+    """Выдает все записи для мастера кроме отмененных и прошедших"""
+    appointments = session.execute(
+        select(Appointment, Client, Master, Service)
+        .outerjoin(Client, Appointment.client_id == Client.client_id)
+        .outerjoin(Master, Appointment.master_id == Master.id)
+        .outerjoin(Service, Appointment.service_id == Service.id)
+        .where(Appointment.master_id == master_id, Appointment.status, Appointment.appointment_time >= datetime.now())
         .order_by(Appointment.appointment_time)
     ).all()
     return appointments
