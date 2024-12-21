@@ -599,7 +599,7 @@ async def master_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
                 now = []
                 appointment, client, master, service = appointments[i]
                 now.append(f"Услуга: {service.title}")
-                now.append(f"Дата: {appointment.appointment_time.strftime("%Y-%m-%d")}")
+                now.append(f"Дата: {appointment.appointment_time.strftime("%d.%m.%Y")}")
                 now.append(f"Время: {appointment.appointment_time.strftime("%H:%M")}")
                 now.append(f"Клиент: {client.name}")
                 text.append(f"{i + 1}." + ", ".join(now))
