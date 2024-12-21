@@ -255,6 +255,19 @@ def get_master_appointments(session: Session, master_id: int):
     return appointments
 
 
+def get_master_timeslots(session: Session, master_id: int):
+    """Возвращает свободные слоты мастера в определенный день"""
+    timeslots = session.execute(
+        select(Time)
+        .where(
+            Time.master_id == master_id,
+            Time.status == True
+        )
+        .order_by(Time.time)
+    ).scalars().all()
+    return timeslots
+
+
 def get_appointment_by_id(session: Session, appointment_id: int):
     """Возвращает запись по id. Если такой нет, то None"""
     appointment = session.execute(
