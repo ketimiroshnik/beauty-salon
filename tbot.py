@@ -2,8 +2,7 @@
 
 import logging
 import os
-import pandas as pd
-import xlsxwriter
+from supportive import *
 
 from db.connection import session
 from db.database_functions import *
@@ -17,29 +16,6 @@ from telegram.ext import (
     filters,
     CallbackContext
 )
-from datetime import datetime
-from urllib.parse import quote
-
-
-def get_calendar_link(title: str, date_start: datetime, date_end: datetime, location: str = "",
-                      details: str = "") -> str:
-    '''
-    :param title: заголовок события
-    :param date_start: дата и время начала мероприятия
-    :param date_end: дата и время окончания мероприятия
-    :param location: место проведения мероприятия
-    :param details: описание мероприятия
-    :return: ссылка для создания события в календаре
-    '''
-    res = f"https://www.google.com/calendar/render?action=TEMPLATE&text={quote(title)}"
-    res += f"&dates={date_start.strftime('%Y%m%dT%H%M%S')}/{date_end.strftime('%Y%m%dT%H%M%S')}"
-    if location:
-        res += f"&location={quote(location)}"
-    if details:
-        res += f"&details={quote(details)}"
-
-    return res
-
 
 TOKEN = os.getenv("TOKEN")
 
@@ -52,11 +28,12 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
-MENU, SERVICE_CHOOSE, MASTER_CHOOSE, DAY_CHOOSE, TIME_CHOOSE, CHOOSE_CANCEL_APPOINTMENT, APPLY_CANCEL_APPOINTMENT, ADMIN_MENU, ADMIN_ADD_MASTER, MASTER_MENU, SERVICE_CHOOSE_MASTER, DAY_CHOOSE_MASTER, TIME_CHOOSE_MASTER = range(13)
 
+MENU, SERVICE_CHOOSE, MASTER_CHOOSE, DAY_CHOOSE, TIME_CHOOSE, CHOOSE_CANCEL_APPOINTMENT, APPLY_CANCEL_APPOINTMENT, ADMIN_MENU, ADMIN_ADD_MASTER, MASTER_MENU, SERVICE_CHOOSE_MASTER, DAY_CHOOSE_MASTER, TIME_CHOOSE_MASTER, ADMIN_ADD_SERVICE_CHOICE_TITLE, ADMIN_ADD_SERVICE_CHOICE_DESCRIPTION, ADMIN_ADD_SERVICE_CHOICE_PRICE = range(16)
 DL_ST = 3  # в некторых функциях отвечает за длину строки в таблице выводимых вариантов ответов
 DURATION_OF_PROCEDURE = 2  # продолжительность процедур в часах
 
+admin_reply_keyboard = [["Получить статистику на данный момент", "Добавить мастера", "Добавить услугу"]]
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Starts the conversation.
        If user is new so add him to data_base,
@@ -69,11 +46,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if admin_id is not None:
         context.user_data["admin_id"] = admin_id
 
-        reply_keyboard = [["Получить статистику на данный момент", "Добавить мастера"]]
         await update.message.reply_text(
             "Привет, админ! Выбери, что ты хочешь сделать?\n",
             reply_markup=ReplyKeyboardMarkup(
-                reply_keyboard, one_time_keyboard=True,
+                admin_reply_keyboard, one_time_keyboard=True,
             ),
         )
         return ADMIN_MENU
@@ -488,111 +464,6 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     return ConversationHandler.END
 
-def get_statistics_file():
-    """Готовит файл со статистикой для отправки администратору"""
-    table_profit_by_service = get_table_profit_by_service(session)
-    table_new_clients = get_table_new_clients_per_time(session)
-    table_masters_work = get_table_work_masters(session)
-
-    file_name = 'statistics_report.xlsx'
-    workbook = xlsxwriter.Workbook(file_name)
-    f_worksheet = workbook.add_worksheet()
-    f_worksheet.name = "новые клиенты со временем"
-    s_worksheet = workbook.add_worksheet()
-    s_worksheet.name = "Доход по услугам"
-    t_worksheet = workbook.add_worksheet()
-    t_worksheet.name = "Доход по каждому мастеру"
-
-    # Запись заголовков
-    f_worksheet.write('A1', 'Дата')
-    f_worksheet.write('B1', 'Количество новых клиентов')
-
-    # Запись данных
-    for i, row in enumerate(table_new_clients.values, start=1):
-        f_worksheet.write(i, 0, row[0])  # Дата
-        f_worksheet.write(i, 1, row[1])  # Количество новых клиентов
-
-    # Создание графика
-    chart = workbook.add_chart({'type': 'line'})
-
-    # Добавление данных в график
-    chart.add_series({
-        'name': 'Количество новых клиентов',  # Название серии данных
-        'categories': f"='новые клиенты со временем'!$A$2:$A${len(table_new_clients) + 1}",  # Диапазон данных для категорий (даты)
-        'values': f"='новые клиенты со временем'!$B$2:$B${len(table_new_clients) + 1}",  # Диапазон данных для значений (новые клиенты)
-    })
-
-    # Настройка графика (заголовок, оси)
-    chart.set_title({'name': 'Новые клиенты со временем'})
-    chart.set_x_axis({'name': 'Дата'})
-    chart.set_y_axis({'name': 'Количество новых клиентов'})
-
-    # Вставка графика на лист
-    f_worksheet.insert_chart('D2', chart)
-
-    # Запись заголовков
-    s_worksheet.write('A1', 'Услуга')
-    s_worksheet.write('B1', 'Количество записей')
-    s_worksheet.write('C1', 'Стоимость услуги')
-    s_worksheet.write('D1', 'Общий доход')
-
-    for i, row in enumerate(table_profit_by_service.values, start=1):
-        s_worksheet.write(i, 0, row[0])
-        s_worksheet.write(i, 1, row[1])
-        s_worksheet.write(i, 2, row[2])
-        s_worksheet.write(i, 3, row[3])
-
-    # Создание гистограммы прибыли по каждому мастеру
-    chart = workbook.add_chart({'type': 'column'})
-
-    # Добавление данных в график
-    chart.add_series({
-        'name': 'Общий доход',
-        'categories': f"='Доход по услугам'!$A$2:$A${len(table_profit_by_service) + 1}",
-        'values': f"='Доход по услугам'!$D$2:$D${len(table_profit_by_service) + 1}",
-    })
-
-    # Настройка графика
-    chart.set_title({'name': 'Общий доход по каждой услуге'})
-    chart.set_x_axis({'name': 'Наименование услуги', 'reverse': True})
-    chart.set_y_axis({'name': 'Общая стоимость оказанных услуг'})
-
-    # Вставка графика на лист
-    s_worksheet.insert_chart('F2', chart)
-
-    # Запись заголовков
-    t_worksheet.write('A1', 'Имя мастера')
-    t_worksheet.write('B1', 'Количество выполненных услуг')
-    t_worksheet.write('C1', 'Общая стоимость выполненных услуги')
-
-    for i, row in enumerate(table_masters_work.values, start=1):
-        t_worksheet.write(i, 0, row[0])
-        t_worksheet.write(i, 1, row[1])
-        t_worksheet.write(i, 2, row[2])
-
-    # Создание гистограммы прибыли по каждому мастеру
-    chart = workbook.add_chart({'type': 'bar'})
-
-    # Добавление данных в график
-    chart.add_series({
-        'name': 'Общее количество услуг',
-        'categories': f"='Доход по каждому мастеру'!$A$2:$A${len(table_masters_work) + 1}",  # Диапазон имен мастеров
-        'values': f"='Доход по каждому мастеру'!$B$2:$B${len(table_masters_work) + 1}",  # Диапазон значений прибыли
-    })
-
-    # Настройка графика
-    chart.set_title({'name': 'Общий количество услуг по каждому мастеру'})
-    chart.set_x_axis({'name': 'Количество оказанных услуг'})
-    chart.set_y_axis({'name': 'Имя мастера', 'reverse': True})
-
-    # Вставка графика на лист
-    t_worksheet.insert_chart('E2', chart)
-
-    # Сохранение файла
-    workbook.close()
-    return file_name
-
-
 async def time_choose_master(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     answer = update.message.text
     if answer == "Назад":
@@ -631,7 +502,6 @@ async def time_choose_master(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         return TIME_CHOOSE_MASTER
 
-
 async def day_choose_master(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     answer = update.message.text
     if answer == "Назад":
@@ -668,9 +538,6 @@ async def day_choose_master(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             ),
         )
         return DAY_CHOOSE_MASTER
-
-
-
 
 async def service_choose_master(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if (update.message.text in [k.title for k in context.user_data["services"]]):
@@ -712,9 +579,6 @@ async def service_choose_master(update: Update, context: ContextTypes.DEFAULT_TY
             ),
         )
         return SERVICE_CHOOSE_MASTER
-
-
-
 
 async def master_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Get the information from user`s answer what he want to do and show him what he wanted"""
@@ -763,11 +627,10 @@ async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             caption="Вот таблица со статистикой"
         )
         os.remove(file_name)
-        reply_keyboard = [["Получить статистику на данный момент", "Добавить мастера"]]
         await update.message.reply_text(
             text="изволите еще чего нибудь?",
             reply_markup=ReplyKeyboardMarkup(
-                reply_keyboard, one_time_keyboard=True,
+                admin_reply_keyboard, one_time_keyboard=True,
             ),
         )
 
@@ -775,12 +638,14 @@ async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     elif update.message.text == "Добавить мастера":
         await update.message.reply_text("Перешли мне какое нибудь сообщение нового мастера.")
         return ADMIN_ADD_MASTER
+    elif update.message.text == "Добавить услугу":
+        await update.message.reply_text("Напишите наименование услуги")
+        return ADMIN_ADD_SERVICE_CHOICE_TITLE
     else:
-        reply_keyboard = [["Получить статистику на данный момент", "Добавить мастера"]]
         await update.message.reply_text(
             "К сожалению я не понял твой ответ. Выбери пожалуйста вариант из клавиатуры.\n Выбери, что ты хочешь сделать?",
             reply_markup=ReplyKeyboardMarkup(
-                reply_keyboard, one_time_keyboard=True,
+                admin_reply_keyboard, one_time_keyboard=True,
             ),
         )
         return ADMIN_MENU
@@ -796,11 +661,73 @@ async def admin_add_master(update: Update, context: CallbackContext) -> int:
             master_id = add_user(session, telegram_id, name)
 
         if set_master_state(session, master_id):
-            await update.message.reply_text(f"Вы успешно выдали роль мастера!")
+            await update.message.reply_text(
+                text="Вы успешно выдали роль мастера! \nизволите еще чего нибудь?",
+                reply_markup=ReplyKeyboardMarkup(
+                    admin_reply_keyboard, one_time_keyboard=True,
+                ),
+            )
         else:
-            await update.message.reply_text(f"Что то пошло не так. Попробуйте попозже.")
+            await update.message.reply_text(
+                text="Что то пошло не так. Попробуйте попозже. \nизволите еще чего нибудь?",
+                reply_markup=ReplyKeyboardMarkup(
+                    admin_reply_keyboard, one_time_keyboard=True,
+                ),
+            )
     else:
-        await update.message.reply_text(f"Вы не переслали сообщение")
+        await update.message.reply_text(
+            text="Вы не переслали сообщение \nизволите еще чего нибудь?",
+            reply_markup=ReplyKeyboardMarkup(
+                admin_reply_keyboard, one_time_keyboard=True,
+            ),
+        )
+
+    return ADMIN_MENU
+
+async def admin_add_service_choice_title(update: Update, context: CallbackContext) -> int:
+    service_title = update.message.text
+    if get_service_by_title(session, service_title) is not None:
+        await update.message.reply_text(
+            "Услуга с таким именем существует \nизволите еще чего нибудь?",
+            reply_markup=ReplyKeyboardMarkup(
+                admin_reply_keyboard, one_time_keyboard=True,
+            ),
+        )
+        return ADMIN_MENU
+
+    context.user_data["service_title"] = service_title
+    await update.message.reply_text("Напишите описание услуги")
+    return ADMIN_ADD_SERVICE_CHOICE_DESCRIPTION
+
+async def admin_add_service_choice_description(update: Update, context: CallbackContext) -> int:
+    description = update.message.text
+    context.user_data["service_description"] = description
+    await update.message.reply_text("Напишите цену услуги, только число")
+    return ADMIN_ADD_SERVICE_CHOICE_PRICE
+
+async def admin_add_service_choice_price(update: Update, context: CallbackContext) -> int:
+    price = update.message.text
+    if not price.isdigit():
+        await update.message.reply_text(text="Вы ввели не число\nНапишите цену услуги, только число")
+        return ADMIN_ADD_SERVICE_CHOICE_PRICE
+
+    price = int(price)
+
+    res = create_service(session, context.user_data["service_title"], context.user_data["service_description"], price)
+    if res is not None:
+        await update.message.reply_text(
+            text="Вы успешно создали новую услугу! \nизволите еще чего нибудь?",
+            reply_markup=ReplyKeyboardMarkup(
+                admin_reply_keyboard, one_time_keyboard=True,
+            ),
+        )
+    else:
+        await update.message.reply_text(
+            text="Что то пошло не так, попробуйте позже \nизволите еще чего нибудь?",
+            reply_markup=ReplyKeyboardMarkup(
+                admin_reply_keyboard, one_time_keyboard=True,
+            ),
+        )
 
     return ADMIN_MENU
 
@@ -825,6 +752,9 @@ def main() -> None:
             SERVICE_CHOOSE_MASTER: [MessageHandler(filters.TEXT & ~filters.COMMAND, service_choose_master)],
             DAY_CHOOSE_MASTER: [MessageHandler(filters.TEXT & ~filters.COMMAND, day_choose_master)],
             TIME_CHOOSE_MASTER: [MessageHandler(filters.TEXT & ~filters.COMMAND, time_choose_master)],
+            ADMIN_ADD_SERVICE_CHOICE_TITLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_add_service_choice_title)],
+            ADMIN_ADD_SERVICE_CHOICE_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_add_service_choice_description)],
+            ADMIN_ADD_SERVICE_CHOICE_PRICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_add_service_choice_price)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
     )
