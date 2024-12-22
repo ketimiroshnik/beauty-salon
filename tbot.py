@@ -681,7 +681,7 @@ async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     logger.info(f"Username: {user.username}, his choice in menu is {update.message.text}")
 
     if update.message.text == "Получить статистику на данный момент":
-        file_name = get_statistics_file()
+        file_name = get_statistics_file(session)
 
         await update.message.reply_document(
             document=file_name,
