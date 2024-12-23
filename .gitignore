@@ -1,6 +1,4 @@
 .env
-__pycache__/supportive.cpython-312.pyc
-db/__pycache__/__init__.cpython-312.pyc
-db/__pycache__/connection.cpython-312.pyc
-db/__pycache__/database_functions.cpython-312.pyc
-db/__pycache__/orm.cpython-312.pyc
+__pycache__
+db/__pycache__
+.idea
